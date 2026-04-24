@@ -32,6 +32,8 @@ public class BoardManager : MonoBehaviour
     [SerializeField] private AudioClip pop2Sound;
     [SerializeField] private AudioClip rowClearSound;
 
+    private List<int>[] neighborsCache;
+
     // Start is called before the first frame update
     void Start()
     {
@@ -53,7 +55,7 @@ public class BoardManager : MonoBehaviour
 
         currentStage = 0;
 
-        GenerateNewStage();
+        // GenerateNewStage();
     }
 
     private void AddCell(int x)
@@ -68,21 +70,278 @@ public class BoardManager : MonoBehaviour
         cellViews.Add(cell);
     }
 
+    private void InitializeCache(int totalCells)
+    {
+        neighborsCache = new List<int>[totalCells];
+        for (int i = 0; i < totalCells; i++)
+        {
+            neighborsCache[i] = GetNeighborIndices(i, totalCells);
+        }
+    }
+
     private void GenerateNewStage()
     {
-        Debug.Log("[Generate New Stage]");
+        ++currentStage;
+        stageText.text = $"Stage: {currentStage}";
 
         addButtonCounter         = MAX_ADD_TIME;
         addButtonNumberText.text = addButtonCounter.ToString();
 
-        for (int index = 0; index < START_ROWS * COLUMNS; ++index)
-        {
-            boardData[index] = Random.Range(1, 10);
-            cellViews[index].UpdateValue(boardData[index]);
+        int totalCells = START_ROWS * COLUMNS;
+        if (neighborsCache == null || neighborsCache.Length != totalCells) {
+            InitializeCache(totalCells);
         }
 
-        ++currentStage;
-        stageText.text = $"Stage: {currentStage}";
+        do {
+            List<int> tempBoard = new List<int>();
+            for (int i = 0; i < totalCells; ++i) tempBoard.Add(-1);
+
+            int[] numberCounts = new int[COLUMNS + 1];
+            for (int i = 1; i <= COLUMNS; ++i) 
+                numberCounts[i] = START_ROWS;
+
+            int targetPairs = (currentStage == 1) ? 3 : ((currentStage == 2) ? 2 : 1);
+            for (int p = 0; p < targetPairs; ++p)
+            {
+                PlaceRandomMatch(tempBoard, numberCounts);
+            }
+
+            int finalStep = CalcFinalStep(tempBoard);
+
+            float endTime = Time.realtimeSinceStartup + 1.0f;
+
+            if (FillRemainingCells(tempBoard, numberCounts, 0, finalStep, endTime))
+            {
+                for (int index = 0; index < totalCells; ++index)
+                {
+                    boardData[index] = tempBoard[index];
+                    cellViews[index].UpdateValue(boardData[index]);
+                }
+                
+                Debug.Log($"[Generate New Stage] - Stage: {currentStage} with { CountMatchPairs(tempBoard) } pairs.");
+                
+                break;
+            }
+            else
+            {
+                Debug.Log($"[Generate New Stage] - Failed with { targetPairs } pairs.");
+            }
+        }
+        while (true);
+    }
+
+    private int CountMatchPairs(List<int> board)
+    {
+        int result = 0;
+        bool[] visited = new bool[board.Count];
+        for (int i = 0; i < board.Count; ++i) if (!visited[i])
+        {
+            for (int j = i + 1; j < board.Count; ++j)
+            {
+                if (PreMatch(i, j, board) && CanMatch(i, j, board)) if (!visited[j])
+                {
+                    visited[i] = true;
+                    visited[j] = true;
+                    ++result;
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+
+    private void PlaceRandomMatch(List<int> board, int[] numberCounts)
+    {
+        List<int> emptyIndices = new List<int>();
+        for (int i = 0; i < board.Count; i++) if (board[i] == -1) emptyIndices.Add(i);
+        Shuffle(emptyIndices);
+        
+        foreach (int firstIndex in emptyIndices)
+        {
+            var neighbors = neighborsCache[firstIndex];
+            foreach (int secondIndex in neighbors)
+            {
+                if (board[secondIndex] == -1)
+                {
+                    for (int v = 1; v <= COLUMNS; v++)
+                    {
+                        int value = Random.Range(1, 10);
+                        int option = Random.Range(0, 2);
+                        if (option == 0) {
+                            if (numberCounts[value] >= 1 && numberCounts[10 - value] >= 1)
+                            {
+                                board[firstIndex ] = value;
+                                board[secondIndex] = 10 - value;
+                                --numberCounts[value];
+                                --numberCounts[10 - value];
+                                return;
+                            }    
+                            else if (numberCounts[value] >= 2)
+                            {
+                                board[firstIndex ] = value;
+                                board[secondIndex] = value;
+                                numberCounts[value] -= 2;
+                                return;
+                            }
+                        }
+                        else
+                        {
+                            if (numberCounts[value] >= 2)
+                            {
+                                board[firstIndex ] = value;
+                                board[secondIndex] = value;
+                                numberCounts[value] -= 2;
+                                return;
+                            }
+                            else if (numberCounts[value] >= 1 && numberCounts[10 - value] >= 1)
+                            {
+                                board[firstIndex ] = value;
+                                board[secondIndex] = 10 - value;
+                                --numberCounts[value];
+                                --numberCounts[10 - value];
+                                return;
+                            }    
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private int GetMostOptimizedIndex(List<int> board)
+    {
+        int result = -1, neighborCountA = 0;
+        for (int i = 0; i < board.Count; i++)
+        {
+            if (board[i] == -1) {
+                if (result == -1) {
+                    result = i;
+                    neighborCountA = CountFilledNeighbors(i, board);
+                }
+                else
+                {
+                    int neighborCountB = CountFilledNeighbors(i, board);
+                    if (neighborCountB > neighborCountA)
+                    {
+                        result = i;
+                        neighborCountA = neighborCountB;
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    private bool FillRemainingCells(List<int> board, int[] numberCounts, int step, int finalStep, float endTime)
+    {
+        if (Time.realtimeSinceStartup > endTime) return false;
+
+        if (step >= finalStep) return true;
+
+        int currentIndex = GetMostOptimizedIndex(board);
+
+        int availableMask = GetAvailableMask(numberCounts, board, currentIndex);
+        if (availableMask == 0) return false;
+
+        for (int number = 1; number <= COLUMNS; ++number) if ((availableMask & (1 << number)) != 0)
+        {
+            board[currentIndex] = number;
+            --numberCounts[number];
+            
+            if (FillRemainingCells(board, numberCounts, step + 1, finalStep, endTime)) return true;
+
+            ++numberCounts[number];
+            board[currentIndex] = -1;
+        } 
+
+        return false;
+    }
+
+    private void Shuffle<T>(IList<T> list)
+    {
+        int n = list.Count;
+        while (n > 1)
+        {
+            n--;
+            int k = UnityEngine.Random.Range(0, n + 1); 
+            T value = list[k];
+            list[k] = list[n];
+            list[n] = value;
+        }
+    }
+
+    private List<int> GetNeighborIndices(int index, int total)
+    {
+        List<int> neighbors = new List<int>();
+        int r = index / COLUMNS;
+        int c = index % COLUMNS;
+
+        for (int dr = -1; dr <= 1; ++dr)
+        {
+            for (int dc = -1; dc <= 1; ++ dc)
+            {
+                if (dr == 0 && dc == 0) continue;
+                int nr = r + dr, nc = c + dc;
+                if (nr < 0 || nc < 0 || nc >= COLUMNS) continue;
+                int ni = nr * COLUMNS + nc;
+                if (ni >= total) continue;
+                neighbors.Add(ni);
+            }
+        }
+
+        if (index != total - 1 && (index % COLUMNS) == (COLUMNS - 1)) neighbors.Add(index + 1);
+        if (index != 0         && (index % COLUMNS) == 0            ) neighbors.Add(index - 1);
+
+        return neighbors;
+    }
+
+    private int CalcFinalStep(List<int> board)
+    {
+        int count = 0;
+        for (int i = 0; i < board.Count; i++)
+        {
+            if (board[i] == -1) ++count;
+        }
+
+        return count;
+    }
+
+    private int CountFilledNeighbors(int index, List<int> board)
+    {
+        int count = 0;
+        List<int> neighbors = neighborsCache[index];
+        foreach (int n in neighbors)
+        {
+            if (board[n] != -1) ++count;
+        }
+        return count;
+    }
+
+    private int GetAvailableMask(int[] numberCounts, List<int> board, int index)
+    {
+        int forbiddenMask = 0;
+        List<int> neighbors = neighborsCache[index];
+
+        foreach (int n in neighbors)
+        {
+            int val = board[n];
+            if (val != -1) 
+            {
+                forbiddenMask |= (1 << val);
+            }
+        }
+
+        int availableMask = 0;
+        for (int i = 1; i <= COLUMNS; i++)
+        {
+            if (numberCounts[i] > 0 && 
+                (forbiddenMask & (1 << i)) == 0 && 
+                (forbiddenMask & (1 << (10 - i))) == 0)
+            {
+                availableMask |= (1 << i);
+            }
+        }
+        return availableMask;
     }
 
     private void HandleCellClicked(int index)
@@ -118,14 +377,19 @@ public class BoardManager : MonoBehaviour
         }
     }
 
-    private bool PreMatch(int a, int b)
+    private bool PreMatch(int a, int b, List<int> list)
     {
-        bool isSame     = boardData[a] == boardData[b];
-        bool isSumOfTen = (boardData[a] + boardData[b]) == 10;
+        bool isSame     = list[a] == list[b];
+        bool isSumOfTen = (list[a] + list[b]) == 10;
         return isSame || isSumOfTen;
     }
 
-    private bool CanMatch(int a, int b)
+    private bool PreMatch(int a, int b)
+    {
+        return PreMatch(a, b, boardData);
+    }
+
+    private bool CanMatch(int a, int b, List<int> list)
     {
         // Chắc chắn rằng a nhỏ hơn b
         if (a > b) return CanMatch(b, a);
@@ -137,7 +401,7 @@ public class BoardManager : MonoBehaviour
         if (x[0] == x[1]) 
         {
             bool matchFound = true;
-            for (int i = a + 1; i < b; ++i) if (boardData[i] > 0) 
+            for (int i = a + 1; i < b; ++i) if (list[i] > 0) 
             {
                 matchFound = false;
                 break;
@@ -149,7 +413,7 @@ public class BoardManager : MonoBehaviour
         if (y[0] == y[1])
         {
             bool matchFound = true;
-            for (int i = a + COLUMNS; i < b; i += COLUMNS) if (boardData[i] > 0) 
+            for (int i = a + COLUMNS; i < b; i += COLUMNS) if (list[i] > 0) 
             {
                 matchFound = false;
                 break;
@@ -164,7 +428,7 @@ public class BoardManager : MonoBehaviour
             int i = x[0] + 1, j = y[0] + 1;
             while (i != x[1] && j != y[1])
             {
-                if (boardData[i * COLUMNS + j] > 0) {
+                if (list[i * COLUMNS + j] > 0) {
                     matchFound = false;
                     break;
                 }
@@ -180,7 +444,7 @@ public class BoardManager : MonoBehaviour
             int i = x[0] + 1, j = y[0] - 1;
             while (i != x[1] && j != y[1])
             {
-                if (boardData[i * COLUMNS + j] > 0)
+                if (list[i * COLUMNS + j] > 0)
                 {
                     matchFound = false;
                     break;
@@ -193,7 +457,7 @@ public class BoardManager : MonoBehaviour
         // Kiểm tra đường ngang tăng dần
         {
             bool matchFound = true;
-            for (int i = a + 1; i < b; ++i) if (boardData[i] > 0)
+            for (int i = a + 1; i < b; ++i) if (list[i] > 0)
             {
                 matchFound = false;
                 break;
@@ -202,6 +466,11 @@ public class BoardManager : MonoBehaviour
         }
 
         return false;
+    }
+
+    private bool CanMatch(int a, int b)
+    {
+        return CanMatch(a, b, boardData);
     }
 
     private void EvaluateMatch()
@@ -369,7 +638,7 @@ public class BoardManager : MonoBehaviour
         }
     }
 
-    public void AddMoreNumbers()
+    public void HandleAddMoreNumbers()
     {
         audioSource.PlayOneShot(pop2Sound);
 
@@ -417,5 +686,14 @@ public class BoardManager : MonoBehaviour
                 ShowLoseScreen();   
             }
         }
+    }
+
+    public void HandleSettingButton()
+    {
+        audioSource.PlayOneShot(pop2Sound);
+
+        Start();
+        currentStage = Random.Range(0, 3);
+        GenerateNewStage();
     }
 }
