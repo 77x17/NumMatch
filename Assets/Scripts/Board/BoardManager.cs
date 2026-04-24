@@ -25,6 +25,13 @@ public class BoardManager : MonoBehaviour
     private const int START_ROWS = 3;
     private const int COLUMNS = 9;
 
+    [Header("SFX")]
+    [SerializeField] private AudioSource audioSource;
+    [SerializeField] private AudioClip chooseNumberSound;
+    [SerializeField] private AudioClip pairClearSound;
+    [SerializeField] private AudioClip pop2Sound;
+    [SerializeField] private AudioClip rowClearSound;
+
     // Start is called before the first frame update
     void Start()
     {
@@ -80,6 +87,8 @@ public class BoardManager : MonoBehaviour
 
     private void HandleCellClicked(int index)
     {
+        audioSource.PlayOneShot(chooseNumberSound);
+
         if (index == firstSelected)
         {
             Deselect(firstSelected);
@@ -201,6 +210,8 @@ public class BoardManager : MonoBehaviour
 
         if (matched)
         {
+            audioSource.PlayOneShot(pairClearSound);
+
             if (firstSelected < secondSelected)
             {
                 ProcessMatch(secondSelected, firstSelected);
@@ -280,6 +291,8 @@ public class BoardManager : MonoBehaviour
 
         if (clearLineA || clearLineB)
         {
+            audioSource.PlayOneShot(rowClearSound);
+
             while (ShouldAddNewLine())
             {
                 CreateNewLine();
@@ -358,6 +371,8 @@ public class BoardManager : MonoBehaviour
 
     public void AddMoreNumbers()
     {
+        audioSource.PlayOneShot(pop2Sound);
+
         if (addButtonCounter <= 0)
         {
             return;
