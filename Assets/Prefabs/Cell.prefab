@@ -141,6 +141,13 @@ MonoBehaviour:
   normalColor: {r: 1, g: 1, b: 1, a: 1}
   selectedColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   clearedColor: {r: 0, g: 0, b: 0, a: 0}
+  gemBackgroundSprites:
+  - {fileID: 0}
+  - {fileID: 21300000, guid: b6540c8a7b38b9344acc8d567a379bcd, type: 3}
+  - {fileID: 21300000, guid: 824bb0e509acd4c41933b4a0e04f0dda, type: 3}
+  - {fileID: 21300000, guid: aa971bb4676abc349a584648ac3acbbb, type: 3}
+  normalTextColor: {r: 0.16078432, g: 0.36078432, b: 0.41568628, a: 1}
+  matchedTextColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
 --- !u!1 &858263896347713382
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 using TMPro;
 
 public class BoardManager : MonoBehaviour
@@ -8,9 +9,16 @@ public class BoardManager : MonoBehaviour
     // SerializeField cho phép chỉnh sửa trong Unity Editor thay vì public nên vẫn đảm bảo tính đóng gói.
     [SerializeField] private GameObject cellPrefab; // Cell.prefab
     [SerializeField] private Transform contentParent; // Content
+    [SerializeField] private RectTransform viewportRect; // Kéo Viewport vào đây
+    [SerializeField] private GridLayoutGroup gridLayout;  // Kéo GridLayoutGroup vào đây
+
     [SerializeField] private TextMeshProUGUI addButtonNumberText; // Add button
     [SerializeField] private TextMeshProUGUI stageText;
     [SerializeField] private GameObject losePanel;
+    [SerializeField] private GameObject winPanel;
+    [SerializeField] private GameObject homePanel;
+    [SerializeField] private GameObject settingPanel;
+
     private const int MAX_ADD_TIME = 6;
     private int addButtonCounter = MAX_ADD_TIME;
     private int currentStage = 1;
@@ -31,12 +39,30 @@ public class BoardManager : MonoBehaviour
     [SerializeField] private AudioClip pairClearSound;
     [SerializeField] private AudioClip pop2Sound;
     [SerializeField] private AudioClip rowClearSound;
+    [SerializeField] private AudioClip gemCollectSound;
 
     private List<int>[] neighborsCache;
+
+    [Header("Gems")]
+    [SerializeField] private TextMeshProUGUI pinkGemsText;
+    [SerializeField] private TextMeshProUGUI orangeGemsText;
+    [SerializeField] private TextMeshProUGUI purpleGemsText;
+
+    private const int TARGET_PINK_GEMS = 5;
+    private const int TARGET_ORANGE_GEMS = 5;
+    private const int TARGET_PURPLE_GEMS = 5;
+    // private const int TARGET_PINK_GEMS = 1;
+    // private const int TARGET_ORANGE_GEMS = 1;
+    // private const int TARGET_PURPLE_GEMS = 1;
+    private int currentPinkGems = 0;
+    private int currentOrangeGems = 0;
+    private int currentPurpleGems = 0;
 
     // Start is called before the first frame update
     void Start()
     {
+        SetupGridCellSize();
+
         boardData.Clear();
         for (int i = 0; i < 9 * COLUMNS; ++i)
         {
@@ -53,16 +79,36 @@ public class BoardManager : MonoBehaviour
             AddCell(x);
         }
 
+        currentPinkGems   = 0;
+        currentOrangeGems = 0;
+        currentPurpleGems = 0;
+        pinkGemsText.text   = Mathf.Max(TARGET_PINK_GEMS   - currentPinkGems  , 0).ToString();
+        orangeGemsText.text = Mathf.Max(TARGET_ORANGE_GEMS - currentOrangeGems, 0).ToString();
+        purpleGemsText.text = Mathf.Max(TARGET_PURPLE_GEMS - currentPurpleGems, 0).ToString();
         currentStage = 0;
 
-        // GenerateNewStage();
+        GenerateNewStage();
     }
+
+    private void SetupGridCellSize()
+    {
+        Canvas.ForceUpdateCanvases();
+        
+        float viewportWidth = viewportRect.rect.width;
+        float spacing = gridLayout.spacing.x;
+        int   columns = 9;
+        
+        float cellSize = (viewportWidth - spacing * (columns - 1) - 20) / columns;
+        gridLayout.cellSize = new Vector2(cellSize, cellSize);
+
+        viewportRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, viewportWidth);
+    }
+
 
     private void AddCell(int x)
     {
         GameObject go = Instantiate(cellPrefab, contentParent);
         CellView cell = go.GetComponent<CellView>();
-
         cell.Init(cellViews.Count, x);
         // Đăng ký lắng nghe OnCellClicked bằng hàm HandleCellClicked
         cell.OnCellClicked += HandleCellClicked;
@@ -106,16 +152,38 @@ public class BoardManager : MonoBehaviour
                 PlaceRandomMatch(tempBoard, numberCounts);
             }
 
-            int finalStep = CalcFinalStep(tempBoard);
+            int finalStep = CalcFinalStep(tempBoard);   
 
             float endTime = Time.realtimeSinceStartup + 1.0f;
 
             if (FillRemainingCells(tempBoard, numberCounts, 0, finalStep, endTime))
             {
-                for (int index = 0; index < totalCells; ++index)
+                bool[] gemStatus = GenerateGems(0, tempBoard);
+
+                for (int i = 0; i < tempBoard.Count; ++i)
                 {
-                    boardData[index] = tempBoard[index];
-                    cellViews[index].UpdateValue(boardData[index]);
+                    if (i < boardData.Count) {
+                        boardData[i] = tempBoard[i];
+                        cellViews[i].UpdateValue(tempBoard[i]);
+                    }
+                    else
+                    {
+                        boardData.Add(tempBoard[i]);
+                        AddCell(tempBoard[i]);
+                    }
+
+                    if (gemStatus[i] == true)
+                    {
+                        List<int> gemsType = new List<int>();
+                        if (TARGET_PINK_GEMS - currentPinkGems > 0) 
+                            gemsType.Add(1);
+                        if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) 
+                            gemsType.Add(2);
+                        if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) {
+                            gemsType.Add(3);
+                        }
+                        cellViews[i].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
+                    }
                 }
                 
                 Debug.Log($"[Generate New Stage] - Stage: {currentStage} with { CountMatchPairs(tempBoard) } pairs.");
@@ -496,6 +564,11 @@ public class BoardManager : MonoBehaviour
                     ShowLoseScreen();
                 }
             }
+
+            if (CheckWin())
+            {
+                ShowWinScreen();
+            }
         }
         else
         {
@@ -533,8 +606,29 @@ public class BoardManager : MonoBehaviour
     {
         Time.timeScale = 1.0f;
         losePanel.SetActive(false);
+        winPanel.SetActive(false);
+        homePanel.SetActive(false);
+        settingPanel.SetActive(false);
 
         Start();
+    }
+
+    private bool CheckWin()
+    {
+        if (currentPinkGems   >= TARGET_PINK_GEMS && 
+            currentOrangeGems >= TARGET_ORANGE_GEMS && 
+            currentPurpleGems >= TARGET_PURPLE_GEMS)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private void ShowWinScreen()
+    {
+        winPanel.SetActive(true);
+        Time.timeScale = 0.0f;
     }
 
     private void Deselect(int index)
@@ -549,8 +643,29 @@ public class BoardManager : MonoBehaviour
     {
         Debug.Log($"Matched: [{ a }] = { boardData[a] } & [{ b }] = { boardData[b] }");
         
-        cellViews[a].SetCleared();
-        cellViews[b].SetCleared();
+        int gemTypeA = cellViews[a].SetCleared();
+        int gemTypeB = cellViews[b].SetCleared();
+
+        if (gemTypeA != 0)
+        {
+            if (gemTypeA == 1) ++currentPinkGems;
+            else if (gemTypeA == 2) ++currentOrangeGems;
+            else if (gemTypeA == 3) ++currentPurpleGems;
+        }
+        if (gemTypeB != 0)
+        {
+            if (gemTypeB == 1) ++currentPinkGems;
+            else if (gemTypeB == 2) ++currentOrangeGems;
+            else if (gemTypeB == 3) ++currentPurpleGems;
+        }
+
+        if (gemTypeA != 0 || gemTypeB != 0)
+        {
+            audioSource.PlayOneShot(gemCollectSound);
+            pinkGemsText.text   = Mathf.Max(TARGET_PINK_GEMS   - currentPinkGems  , 0).ToString();
+            orangeGemsText.text = Mathf.Max(TARGET_ORANGE_GEMS - currentOrangeGems, 0).ToString();
+            purpleGemsText.text = Mathf.Max(TARGET_PURPLE_GEMS - currentPurpleGems, 0).ToString();
+        }
         
         boardData[a] = -1;
         boardData[b] = -1;
@@ -661,6 +776,8 @@ public class BoardManager : MonoBehaviour
             ++startIndex;
         }
 
+        bool[] gemStatus = GenerateGems(startIndex, remaining);
+
         for (int i = 0; i < remaining.Count; ++i)
         {
             if (startIndex + i < boardData.Count) {
@@ -671,6 +788,19 @@ public class BoardManager : MonoBehaviour
             {
                 boardData.Add(remaining[i]);
                 AddCell(remaining[i]);
+            }
+
+            if (gemStatus[i] == true)
+            {
+                List<int> gemsType = new List<int>();
+                if (TARGET_PINK_GEMS - currentPinkGems > 0) 
+                    gemsType.Add(1);
+                if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) 
+                    gemsType.Add(2);
+                if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) {
+                    gemsType.Add(3);
+                }
+                cellViews[startIndex + i].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
             }
         }
 
@@ -692,8 +822,87 @@ public class BoardManager : MonoBehaviour
     {
         audioSource.PlayOneShot(pop2Sound);
 
-        Start();
-        currentStage = Random.Range(0, 3);
-        GenerateNewStage();
+        settingPanel.SetActive(true);
+        Time.timeScale = 0.0f;
+    }
+
+    public void HandleHomeButton()
+    {
+        audioSource.PlayOneShot(pop2Sound);
+
+        homePanel.SetActive(true);
+        Time.timeScale = 0.0f;
+    }
+
+    public void OnBackButton()
+    {
+        audioSource.PlayOneShot(pop2Sound);
+
+        homePanel.SetActive(false);
+        settingPanel.SetActive(false);
+
+        Time.timeScale = 1.0f;
+    }
+
+    private bool[] GenerateGems(int startIndex, List<int> addNumbers)
+    {
+        bool[] gemStatus = new bool[addNumbers.Count];
+
+        int X = Random.Range(5, 8);
+        int Y = Mathf.CeilToInt((addNumbers.Count + 1) / 2.0f);
+        int Z = Mathf.Max(TARGET_PINK_GEMS - currentPinkGems, 0) + 
+                Mathf.Max(TARGET_ORANGE_GEMS - currentOrangeGems, 0) + 
+                Mathf.Max(TARGET_PURPLE_GEMS - currentPurpleGems, 0);
+
+        if (Z <= 0) return gemStatus;
+        
+        int gemCount = 0;
+        int countSinceLastGem = 0;
+
+        for (int i = 0; i < addNumbers.Count; ++i)
+        {
+            if (gemCount >= Z) break;
+
+            ++countSinceLastGem;
+            bool isLastChanceInWindow = countSinceLastGem >= Y;
+
+            bool rolledGem = Random.Range(0, 100) < X;
+            if (rolledGem || isLastChanceInWindow)
+            {
+                int candidateIdx = FindValidGemCandidate(
+                    addNumbers,
+                    i,
+                    startIndex,
+                    gemStatus
+                );
+
+                if (candidateIdx >= 0)
+                {
+                    gemStatus[candidateIdx] = true;
+                    ++gemCount;
+                    countSinceLastGem = 0;
+                }
+            }
+        }
+
+        return gemStatus;
+    }
+
+    private int FindValidGemCandidate(
+        List<int> addNumbers,
+        int currentIndex,
+        int startIndex,
+        bool[] gemStatus)
+    {
+        startIndex %= 9;
+        List<int> neighbors = GetNeighborIndices(startIndex + currentIndex, startIndex + addNumbers.Count);
+        foreach (int n in neighbors) if (0 <= n - startIndex && n - startIndex < addNumbers.Count && gemStatus[n - startIndex] == true)
+        {
+            if (PreMatch(currentIndex, n - startIndex, addNumbers) && CanMatch(currentIndex, n - startIndex, addNumbers))
+            {
+                return -1;                
+            }
+        }
+        return currentIndex;
     }
 }
