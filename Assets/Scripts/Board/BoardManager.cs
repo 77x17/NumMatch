@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -61,6 +62,15 @@ public class BoardManager : MonoBehaviour
     // Start is called before the first frame update
     void Start()
     {
+        StartCoroutine(InitAfterLayout());
+    }
+
+    IEnumerator InitAfterLayout()
+    {
+        yield return null;
+        yield return null;
+        yield return new WaitForEndOfFrame();
+
         SetupGridCellSize();
 
         boardData.Clear();
