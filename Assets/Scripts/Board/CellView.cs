@@ -87,15 +87,13 @@ public class CellView : MonoBehaviour {
     {
         Value = 0;
         backgroundImage.color = normalColor;
-
-        button.interactable = false;
+        backgroundImage.raycastTarget = false;
+        // button.interactable = false;
 
         int gemType = (int)GemType;
 
         GemType = GemType.None;
         ApplyGemBackground(GemType);
-
-        numberText.color = matchedTextColor;
 
         // Dừng coroutine cũ nếu đang chạy, rồi bắt đầu animation mới
         if (activeAnimation != null) StopCoroutine(activeAnimation);
@@ -150,6 +148,8 @@ public class CellView : MonoBehaviour {
         }
 
         // Khoá chắc trạng thái cuối
+        button.interactable = false;
+        backgroundImage.raycastTarget = true;
         transform.localScale  = Vector3.one;
         backgroundImage.color = normalColor;
         numberText.color      = matchedTextColor;
@@ -182,7 +182,7 @@ public class CellView : MonoBehaviour {
             float eased = 1f - Mathf.Pow(1f - t, 2f);
 
             transform.localScale  = Vector3.one * Mathf.Lerp(startScale, 0f, eased);
-            backgroundImage.color = new Color(bgColor.r,  bgColor.g,  bgColor.b,  Mathf.Lerp(bgColor.a,  0f, eased));
+            backgroundImage.color = new Color(bgColor.r,  bgColor.g,  bgColor.b,  Mathf.Lerp(1,  0f, eased));
             numberText.color      = new Color(txtColor.r, txtColor.g, txtColor.b, Mathf.Lerp(txtColor.a, 0f, eased));
 
             yield return null;

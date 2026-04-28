@@ -588,7 +588,7 @@ public class BoardManager : MonoBehaviour
         {
             Deselect(firstSelected);
             Deselect(secondSelected);
-        }
+        }   
 
         firstSelected  = -1;
         secondSelected = -1;
@@ -685,12 +685,216 @@ public class BoardManager : MonoBehaviour
         UpdateCellsIndex(a);
     }
 
+    [Header("Match Line")]
+    [SerializeField] private Canvas rootCanvas; // Kéo Canvas gốc (root) vào đây trong Editor
+    private float matchLineDuration = 1.0f;
+    [SerializeField] private Color matchLineColor = Color.yellow;
+
+    private void DrawMatchLine(int a, int b)
+    {
+        int first = Mathf.Min(a, b);
+        int second = Mathf.Max(a, b);
+
+        if (isSpecialMatch(first, second))
+        {
+            StartCoroutine(DrawSpecialMatchLineRoutine(first, second));
+        }
+        else
+        {
+            StartCoroutine(DrawMatchLineRoutine(first, second));
+        }
+    }
+
+    private Vector2 GetCellScreenCenter(int index)
+    {
+        RectTransform rt = cellViews[index].GetComponent<RectTransform>();
+        Vector3[] corners = new Vector3[4];
+        rt.GetWorldCorners(corners);
+        // Trung điểm trong world space
+        Vector3 worldCenter = (corners[0] + corners[2]) * 0.5f;
+
+        // Với Screen Space - Overlay thì worldCenter đã là screen coords
+        // Với Screen Space - Camera thì cần camera
+        Camera cam = (rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay) ? null : rootCanvas.worldCamera;
+        return RectTransformUtility.WorldToScreenPoint(cam, worldCenter);
+    }
+
+    private IEnumerator DrawSpecialMatchLineRoutine(int b, int a)
+    {
+        RectTransform canvasRT = rootCanvas.GetComponent<RectTransform>();
+        Camera cam = (rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay) ? null : rootCanvas.worldCamera;
+
+        // --- TÍNH TOÁN CÁC ĐIỂM ---
+        // 1. Điểm xuất phát từ b và kết thúc ở mép phải hàng b
+        Vector2 screenB = GetCellScreenCenter(b);
+        int endRowBIndex = (b / 9) * 9 + 8; // Ô cuối cùng của hàng chứa b
+        Vector2 screenEdgeB = GetCellScreenCenter(endRowBIndex) + new Vector2(50f, 0); // Cộng thêm offset để ra ngoài biên
+
+        // 2. Điểm xuất phát từ mép trái hàng a và kết thúc ở a
+        Vector2 screenA = GetCellScreenCenter(a);
+        int startRowAIndex = (a / 9) * 9; // Ô đầu tiên của hàng chứa a
+        Vector2 screenEdgeA = GetCellScreenCenter(startRowAIndex) - new Vector2(50f, 0); // Trừ offset
+
+        // Convert tất cả sang Local Point
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRT, screenB, cam, out Vector2 locB);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRT, screenEdgeB, cam, out Vector2 locEdgeB);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRT, screenA, cam, out Vector2 locA);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRT, screenEdgeA, cam, out Vector2 locEdgeA);
+
+        // --- TẠO OBJECTS ---
+        float lineThickness = 20f;
+        float sqSize = lineThickness * 2f;
+
+        // Tạo 2 đoạn line
+        GameObject line1 = CreateLineSegment("Line_Part1", locB, locEdgeB, lineThickness, canvasRT);
+        GameObject line2 = CreateLineSegment("Line_Part2", locEdgeA, locA, lineThickness, canvasRT);
+
+        // Thêm các đầu vuông (Chỉ thêm ở ô b và ô a)
+        Image capB = CreateEndCap("CapB", line1.GetComponent<RectTransform>(), sqSize);
+        capB.rectTransform.anchoredPosition = new Vector2(-line1.GetComponent<RectTransform>().sizeDelta.x / 2, 0);
+
+        Image capA = CreateEndCap("CapA", line2.GetComponent<RectTransform>(), sqSize);
+        capA.rectTransform.anchoredPosition = new Vector2(line2.GetComponent<RectTransform>().sizeDelta.x / 2, 0);
+
+        // --- HIỆU ỨNG FADE ---
+        Image img1 = line1.GetComponent<Image>();
+        Image img2 = line2.GetComponent<Image>();
+        float elapsed = 0f;
+        while (elapsed < matchLineDuration)
+        {
+            elapsed += Time.deltaTime;
+            float alpha = Mathf.Lerp(matchLineColor.a, 0f, elapsed / matchLineDuration);
+            Color c = new Color(matchLineColor.r, matchLineColor.g, matchLineColor.b, alpha);
+            
+            img1.color = img2.color = capA.color = capB.color = c;
+            yield return null;
+        }
+
+        Destroy(line1);
+        Destroy(line2);
+    }
+
+    // Helper để tạo một đoạn thẳng nhanh
+    private GameObject CreateLineSegment(string name, Vector2 start, Vector2 end, float thickness, RectTransform parent)
+    {
+        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        obj.transform.SetParent(parent, false);
+        obj.transform.SetAsLastSibling();
+
+        RectTransform rt = obj.GetComponent<RectTransform>();
+        Vector2 dir = end - start;
+        float len = dir.magnitude;
+        float ang = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+
+        rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = (start + end) * 0.5f;
+        rt.sizeDelta = new Vector2(len, thickness);
+        rt.localEulerAngles = new Vector3(0, 0, ang);
+
+        obj.GetComponent<Image>().color = matchLineColor;
+        return obj;
+    }
+
+    private IEnumerator DrawMatchLineRoutine(int a, int b)
+    {
+        // Lấy screen position của 2 cell
+        Vector2 screenA = GetCellScreenCenter(a);
+        Vector2 screenB = GetCellScreenCenter(b);
+
+        // Convert sang local space của Canvas gốc
+        RectTransform canvasRT = rootCanvas.GetComponent<RectTransform>();
+        Camera cam = (rootCanvas.renderMode == RenderMode.ScreenSpaceOverlay) ? null : rootCanvas.worldCamera;
+
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRT, screenA, cam, out Vector2 localA);
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRT, screenB, cam, out Vector2 localB);
+
+        // Cấu hình thông số Line
+        float lineThickness = 20f; // Độ rộng của line
+        float squareSize = lineThickness * 2f; // Kích thước hình vuông đầu cuối
+
+        // Tạo line object — parent là Canvas gốc, KHÔNG phải contentParent
+        GameObject lineObj = new GameObject("MatchLine", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        lineObj.transform.SetParent(canvasRT, false);
+        lineObj.transform.SetAsLastSibling(); // Vẽ trên cùng
+
+        RectTransform lineRT = lineObj.GetComponent<RectTransform>();
+        lineRT.anchorMin = new Vector2(0.5f, 0.5f);
+        lineRT.anchorMax = new Vector2(0.5f, 0.5f);
+        lineRT.pivot     = new Vector2(0.5f, 0.5f);
+
+        Vector2 dir    = localB - localA;
+        float length   = dir.magnitude;
+        float angle    = Mathf.Atan2(dir.y, dir.x) * Mathf.Rad2Deg;
+
+        lineRT.anchoredPosition = (localA + localB) * 0.5f;
+        lineRT.sizeDelta        = new Vector2(length, lineThickness);
+        lineRT.localEulerAngles = new Vector3(0f, 0f, angle);
+
+        Image lineImg = lineObj.GetComponent<Image>();
+        lineImg.color = matchLineColor;
+
+        // Tạo 2 hình vuông ở 2 đầu (là con của lineObj)
+        Image startSquare = CreateEndCap("StartCap", lineRT, squareSize);
+        Image endSquare = CreateEndCap("EndCap", lineRT, squareSize);
+
+        // Đặt vị trí 2 đầu theo local space của Line
+        // Vì pivot của Line là (0.5, 0.5) nên đầu trái là -length/2, đầu phải là length/2
+        startSquare.rectTransform.anchoredPosition = new Vector2(-length / 2, 0);
+        endSquare.rectTransform.anchoredPosition = new Vector2(length / 2, 0);
+
+        // Fade out
+        float elapsed = 0f;
+        while (elapsed < matchLineDuration)
+        {
+            elapsed += Time.deltaTime;
+            float alpha = Mathf.Lerp(matchLineColor.a, 0f, elapsed / matchLineDuration);
+            Color newColor = new Color(matchLineColor.r, matchLineColor.g, matchLineColor.b, alpha);
+
+            lineImg.color = newColor;
+            startSquare.color = newColor;
+            endSquare.color = newColor;
+
+            yield return null;
+        }
+
+        Destroy(lineObj);
+    }
+
+    private Image CreateEndCap(string name, RectTransform parent, float size)
+    {
+        GameObject capObj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        capObj.transform.SetParent(parent, false);
+        
+        RectTransform capRT = capObj.GetComponent<RectTransform>();
+        capRT.sizeDelta = new Vector2(size, size);
+        
+        Image capImg = capObj.GetComponent<Image>();
+        capImg.color = matchLineColor; // Gán màu ban đầu
+        
+        return capImg;
+    }
+
+
+    private bool isSpecialMatch(int a, int b)
+    {
+        int r1 = a / 9, r2 = b / 9;
+        int c1 = a % 9, c2 = b % 9;
+
+        if (r1 == r2 || c1 == c2 || r1 + c1 == r2 + c2 || r1 - c1 == r2 - c2) return false;
+        
+        return true;
+    }
+    // a > b để xóa dòng dưới trước rồi xóa dòng trên khi a và b đều gây ra clear row
     private void ProcessMatch(int a, int b)
     {
         Debug.Log($"Matched: [{a}] = {boardData[a]} & [{b}] = {boardData[b]}");
 
         int gemTypeA = cellViews[a].SetCleared();
         int gemTypeB = cellViews[b].SetCleared();
+
+        // Nếu isSpecialMatch(a, b) thì DrawMatchLine vẽ từ b (vì b có index bé hơn a) đến cuối hàng của b 
+        // rồi vẽ từ đầu hàng của a đến a.
+        DrawMatchLine(a, b);
 
         if (gemTypeA != 0)
         {
@@ -745,24 +949,6 @@ public class BoardManager : MonoBehaviour
         int xB = b / COLUMNS;
         int startB = xB * COLUMNS;
         int endB   = System.Math.Min(startB + COLUMNS, boardData.Count);
-
-        // // Collect tất cả coroutine fade, yield từng cái để đảm bảo chờ đúng
-        // float fadeDuration = 0.35f;
-        // var pending = new List<Coroutine>();
-        // // Fade out đồng thời cả 2 dòng (nếu có)
-        // if (clearLineA)
-        //     for (int i = startA; i < endA; ++i)
-        //         if (cellViews[i] != null)
-        //             pending.Add(StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration)));
-
-        // if (clearLineB && startB != startA) // tránh fade 2 lần nếu cùng dòng
-        //     for (int i = startB; i < endB; ++i)
-        //         if (cellViews[i] != null)
-        //             pending.Add(StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration)));
-
-        // // Chờ TẤT CẢ coroutine fade hoàn thành - không dùng WaitForSeconds nữa
-        // foreach (var c in pending)
-        //     yield return c;
 
         // ── Fade tuần tự từng ô trái → phải, 2 dòng song song với nhau ──
         float fadeDuration = 0.1f; // mỗi ô mất 0.1s
@@ -837,6 +1023,21 @@ public class BoardManager : MonoBehaviour
         UpdateCellsIndex(a);
     }
 
+    private void FinalizeTurnCheck()
+    {
+        if (CheckWin())
+        {
+            ShowWinScreen();
+        }
+        else if (addButtonCounter == 0)
+        {
+            if (!CheckFinishedStage() && CheckLose())
+            {
+                ShowLoseScreen();
+            }
+        }
+    }
+
     private void PostClearProcess(int a, int b, bool clearLineA, bool clearLineB)
     {
         if (clearLineA || clearLineB)
@@ -850,6 +1051,8 @@ public class BoardManager : MonoBehaviour
             if (CheckFinishedStage())
                 GenerateNewStage();
         }
+
+        FinalizeTurnCheck();
     }
 
     private bool ShouldAddNewLine()
@@ -975,6 +1178,8 @@ public class BoardManager : MonoBehaviour
     public void HandleReplayButton()
     {
         if (isAnimating) return;
+        
+        audioSource.PlayOneShot(pop2Sound);
 
         // Time.timeScale = 1.0f;
         losePanel.SetActive(false);
