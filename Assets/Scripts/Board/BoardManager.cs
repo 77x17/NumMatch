@@ -34,6 +34,8 @@ public class BoardManager : MonoBehaviour
     private const int START_ROWS = 3;
     private const int COLUMNS = 9;
 
+    private bool isAnimating = false; // thêm field này
+
     [Header("SFX")]
     [SerializeField] private AudioSource audioSource;
     [SerializeField] private AudioClip chooseNumberSound;
@@ -424,6 +426,8 @@ public class BoardManager : MonoBehaviour
 
     private void HandleCellClicked(int index)
     {
+        if (isAnimating) return; 
+
         audioSource.PlayOneShot(chooseNumberSound);
 
         if (index == firstSelected)
@@ -567,17 +571,17 @@ public class BoardManager : MonoBehaviour
                 ProcessMatch(firstSelected, secondSelected);
             }
 
-            if (addButtonCounter == 0)
-            {
-                if (CheckLose())
-                {
-                    ShowLoseScreen();
-                }
-            }
-
+            // Check Win trước chứ
             if (CheckWin())
             {
                 ShowWinScreen();
+            }
+            else if (addButtonCounter == 0)
+            {
+                if (!CheckFinishedStage() && CheckLose())
+                {
+                    ShowLoseScreen();
+                }
             }
         }
         else
@@ -609,18 +613,7 @@ public class BoardManager : MonoBehaviour
     private void ShowLoseScreen()
     {
         losePanel.SetActive(true);
-        Time.timeScale = 0.0f;
-    }
-
-    public void OnReplayButton()
-    {
-        Time.timeScale = 1.0f;
-        losePanel.SetActive(false);
-        winPanel.SetActive(false);
-        homePanel.SetActive(false);
-        settingPanel.SetActive(false);
-
-        Start();
+        // Time.timeScale = 0.0f;
     }
 
     private bool CheckWin()
@@ -638,7 +631,7 @@ public class BoardManager : MonoBehaviour
     private void ShowWinScreen()
     {
         winPanel.SetActive(true);
-        Time.timeScale = 0.0f;
+        // Time.timeScale = 0.0f;
     }
 
     private void Deselect(int index)
@@ -649,10 +642,53 @@ public class BoardManager : MonoBehaviour
         }
     }
 
+    // Chỉ kiểm tra - không động vào data, không animation
+    private bool CheckClearLine(int a)
+    {
+        int x = a / COLUMNS;
+        int startIndex = x * COLUMNS;
+
+        if (startIndex < 0 || startIndex >= boardData.Count) return false;
+
+        int endIndex = System.Math.Min(startIndex + COLUMNS, boardData.Count);
+        for (int i = startIndex; i < endIndex; ++i)
+            if (boardData[i] > 0) return false;
+
+        return true;
+    }
+
+    // Thực sự xoá data + animate - gọi sau khi đã biết kết quả
+    private IEnumerator ProcessClearLineAsync(int startIndex, int endIndex, int a)
+    {
+        float fadeDuration = 0.35f;
+
+        // Fade out đồng loạt
+        for (int i = startIndex; i < endIndex; ++i)
+            if (cellViews[i] != null)
+                StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration));
+
+        yield return new WaitForSeconds(fadeDuration);
+
+        // Xoá và dịch lên
+        for (int i = startIndex; i < endIndex; ++i)
+            if (cellViews[i] != null) Destroy(cellViews[i].gameObject);
+
+        int actualCountToDelete = endIndex - startIndex;
+        if (actualCountToDelete > 0)
+        {
+            boardData.RemoveRange(startIndex, actualCountToDelete);
+            cellViews.RemoveRange(startIndex, actualCountToDelete);
+        }
+
+        Debug.Log($"[Clear line]: [{a / COLUMNS}]: boardData.Count {boardData.Count}; cellViews.Count {cellViews.Count}");
+
+        UpdateCellsIndex(a);
+    }
+
     private void ProcessMatch(int a, int b)
     {
-        Debug.Log($"Matched: [{ a }] = { boardData[a] } & [{ b }] = { boardData[b] }");
-        
+        Debug.Log($"Matched: [{a}] = {boardData[a]} & [{b}] = {boardData[b]}");
+
         int gemTypeA = cellViews[a].SetCleared();
         int gemTypeB = cellViews[b].SetCleared();
 
@@ -672,33 +708,147 @@ public class BoardManager : MonoBehaviour
         if (gemTypeA != 0 || gemTypeB != 0)
         {
             audioSource.PlayOneShot(gemCollectSound);
-            pinkGemsText.text   = Mathf.Max(TARGET_PINK_GEMS   - currentPinkGems  , 0).ToString();
+            pinkGemsText.text   = Mathf.Max(TARGET_PINK_GEMS   - currentPinkGems,   0).ToString();
             orangeGemsText.text = Mathf.Max(TARGET_ORANGE_GEMS - currentOrangeGems, 0).ToString();
             purpleGemsText.text = Mathf.Max(TARGET_PURPLE_GEMS - currentPurpleGems, 0).ToString();
         }
-        
+
         boardData[a] = -1;
         boardData[b] = -1;
 
-        bool clearLineA = ProcessClearLine(a);
-        bool clearLineB = ProcessClearLine(b);
+        // ── Kiểm tra TRƯỚC (sync, không đụng data) ──
+        bool clearLineA = CheckClearLine(a);
+        bool clearLineB = CheckClearLine(b);
 
         if (clearLineA || clearLineB)
         {
             audioSource.PlayOneShot(rowClearSound);
+            isAnimating = true;
 
-            while (ShouldAddNewLine())
-            {
-                CreateNewLine();
-            }
+            // Kick off animation, truyền callback để chạy phần còn lại sau
+            StartCoroutine(ProcessClearLinesAndContinue(a, b, clearLineA, clearLineB));
         }
-        
-        if (clearLineA && clearLineB && ((a < COLUMNS) || (b < COLUMNS))) 
+        else
+        {
+            // Không có clear line → chạy luôn như cũ
+            PostClearProcess(a, b, false, false);
+        }
+    }
+
+    private IEnumerator ProcessClearLinesAndContinue(int a, int b, bool clearLineA, bool clearLineB)
+    {
+        // Tính index trước khi xoá (vì RemoveRange sẽ làm lệch index)
+        int xA = a / COLUMNS;
+        int startA = xA * COLUMNS;
+        int endA   = System.Math.Min(startA + COLUMNS, boardData.Count);
+
+        int xB = b / COLUMNS;
+        int startB = xB * COLUMNS;
+        int endB   = System.Math.Min(startB + COLUMNS, boardData.Count);
+
+        // // Collect tất cả coroutine fade, yield từng cái để đảm bảo chờ đúng
+        // float fadeDuration = 0.35f;
+        // var pending = new List<Coroutine>();
+        // // Fade out đồng thời cả 2 dòng (nếu có)
+        // if (clearLineA)
+        //     for (int i = startA; i < endA; ++i)
+        //         if (cellViews[i] != null)
+        //             pending.Add(StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration)));
+
+        // if (clearLineB && startB != startA) // tránh fade 2 lần nếu cùng dòng
+        //     for (int i = startB; i < endB; ++i)
+        //         if (cellViews[i] != null)
+        //             pending.Add(StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration)));
+
+        // // Chờ TẤT CẢ coroutine fade hoàn thành - không dùng WaitForSeconds nữa
+        // foreach (var c in pending)
+        //     yield return c;
+
+        // ── Fade tuần tự từng ô trái → phải, 2 dòng song song với nhau ──
+        float fadeDuration = 0.1f; // mỗi ô mất 0.1s
+        int lineLength = COLUMNS; // số ô mỗi dòng
+        for (int col = 0; col < lineLength; ++col)
+        {
+            var pending = new List<Coroutine>();
+
+            if (clearLineA)
+            {
+                int i = startA + col;
+                if (i < endA && cellViews[i] != null)
+                    pending.Add(StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration)));
+            }
+
+            if (clearLineB && startB != startA)
+            {
+                int i = startB + col;
+                if (i < endB && cellViews[i] != null)
+                    pending.Add(StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration)));
+            }
+
+            // Chờ ô hiện tại (ở cả 2 dòng) fade xong rồi mới qua ô tiếp theo
+            foreach (var c in pending)
+                yield return c;
+                // yield return new WaitForSeconds(fadeDuration * 0.5f);
+        }
+
+        // Xoá dòng có index lớn hơn trước để không làm lệch index dòng còn lại
+        if (clearLineA && clearLineB && startA != startB)
+        {
+            int firstStart  = Mathf.Min(startA, startB);
+            int firstEnd    = Mathf.Min(endA,   endB);
+            int secondStart = Mathf.Max(startA, startB);
+            int secondEnd   = Mathf.Max(endA,   endB);
+
+            // Xoá dòng dưới (index lớn) trước
+            DeleteLineData(secondStart, secondEnd, b > a ? b : a);
+            // Xoá dòng trên (index nhỏ) sau
+            DeleteLineData(firstStart,  firstEnd,  b > a ? a : b);
+        }
+        else if (clearLineA)
+        {
+            DeleteLineData(startA, endA, a);
+        }
+        else if (clearLineB)
+        {
+            DeleteLineData(startB, endB, b);
+        }
+
+        // Tiếp tục logic sau clear
+        PostClearProcess(a, b, clearLineA, clearLineB);
+
+        isAnimating = false;
+    }
+
+    // Tách riêng để tái sử dụng
+    private void DeleteLineData(int startIndex, int endIndex, int a)
+    {
+        for (int i = startIndex; i < endIndex; ++i)
+            if (cellViews[i] != null) Destroy(cellViews[i].gameObject);
+
+        int count = endIndex - startIndex;
+        if (count > 0)
+        {
+            boardData.RemoveRange(startIndex, count);
+            cellViews.RemoveRange(startIndex, count);
+        }
+
+        Debug.Log($"[Clear line]: [{a / COLUMNS}]: boardData.Count {boardData.Count}; cellViews.Count {cellViews.Count}");
+
+        UpdateCellsIndex(a);
+    }
+
+    private void PostClearProcess(int a, int b, bool clearLineA, bool clearLineB)
+    {
+        if (clearLineA || clearLineB)
+        {
+            while (ShouldAddNewLine())
+                CreateNewLine();
+        }
+
+        if (clearLineA && clearLineB && ((a < COLUMNS) || (b < COLUMNS)))
         {
             if (CheckFinishedStage())
-            {
                 GenerateNewStage();
-            }
         }
     }
 
@@ -712,34 +862,6 @@ public class BoardManager : MonoBehaviour
     private bool CheckFinishedStage()
     {
         for (int index = 0; index < COLUMNS; ++index) if (boardData[index] > 0) return false;
-
-        return true;
-    }
-
-    private bool ProcessClearLine(int a)
-    {
-        int x = a / COLUMNS;
-        int startIndex = x * COLUMNS;
-
-        if (startIndex < 0 || startIndex >= boardData.Count) return false;
-
-        // Check có phải là hàng ngang trống
-        int endIndex = System.Math.Min(startIndex + COLUMNS, boardData.Count);
-        for (int i = startIndex; i < endIndex; ++i) 
-            if (boardData[i] > 0) return false;
-        
-        for (int i = startIndex; i < endIndex; ++i)
-            if (cellViews[i] != null) Destroy(cellViews[i].gameObject);
-        
-        int actualCountToDelete = endIndex - startIndex;
-        if (actualCountToDelete > 0) {
-            boardData.RemoveRange(startIndex, actualCountToDelete);
-            cellViews.RemoveRange(startIndex, actualCountToDelete);
-        }
-
-        Debug.Log($"[Clear line]: [{ x }]: boardData.Count { boardData.Count}; cellViews.Count { cellViews.Count }");
-
-        UpdateCellsIndex(a);
 
         return true;
     }
@@ -765,6 +887,8 @@ public class BoardManager : MonoBehaviour
 
     public void HandleAddMoreNumbers()
     {
+        if (isAnimating) return;
+
         audioSource.PlayOneShot(pop2Sound);
 
         if (addButtonCounter <= 0)
@@ -830,28 +954,47 @@ public class BoardManager : MonoBehaviour
 
     public void HandleSettingButton()
     {
+        if (isAnimating) return;
+
         audioSource.PlayOneShot(pop2Sound);
 
         settingPanel.SetActive(true);
-        Time.timeScale = 0.0f;
+        // Time.timeScale = 0.0f;
     }
 
     public void HandleHomeButton()
     {
+        if (isAnimating) return;
+        
         audioSource.PlayOneShot(pop2Sound);
 
         homePanel.SetActive(true);
-        Time.timeScale = 0.0f;
+        // Time.timeScale = 0.0f;
     }
 
-    public void OnBackButton()
+    public void HandleReplayButton()
     {
+        if (isAnimating) return;
+
+        // Time.timeScale = 1.0f;
+        losePanel.SetActive(false);
+        winPanel.SetActive(false);
+        homePanel.SetActive(false);
+        settingPanel.SetActive(false);
+
+        Start();
+    }
+
+    public void HandleBackButton()
+    {
+        if (isAnimating) return;
+
         audioSource.PlayOneShot(pop2Sound);
 
         homePanel.SetActive(false);
         settingPanel.SetActive(false);
 
-        Time.timeScale = 1.0f;
+        // Time.timeScale = 1.0f;
     }
 
     private bool[] GenerateGems(int startIndex, List<int> addNumbers)

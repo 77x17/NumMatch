@@ -157,7 +157,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: -25.000061}
+  m_AnchoredPosition: {x: 0, y: -25}
   m_SizeDelta: {x: -200, y: -950}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &29121216
@@ -646,7 +646,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: -50.00006}
+  m_AnchoredPosition: {x: 0, y: -50}
   m_SizeDelta: {x: 0, y: -100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &494780253
@@ -1804,7 +1804,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1589006802}
         m_TargetAssemblyTypeName: BoardManager, Assembly-CSharp
-        m_MethodName: OnReplayButton
+        m_MethodName: HandleReplayButton
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -1938,7 +1938,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1589006802}
         m_TargetAssemblyTypeName: BoardManager, Assembly-CSharp
-        m_MethodName: OnReplayButton
+        m_MethodName: HandleReplayButton
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -2187,7 +2187,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1589006802}
         m_TargetAssemblyTypeName: BoardManager, Assembly-CSharp
-        m_MethodName: OnBackButton
+        m_MethodName: HandleBackButton
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -3073,7 +3073,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1589006802}
         m_TargetAssemblyTypeName: BoardManager, Assembly-CSharp
-        m_MethodName: OnBackButton
+        m_MethodName: HandleBackButton
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -3158,7 +3158,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: -20.000061}
+  m_AnchoredPosition: {x: 0, y: -20}
   m_SizeDelta: {x: -100, y: -960}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1346787836
@@ -5266,7 +5266,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1589006802}
         m_TargetAssemblyTypeName: BoardManager, Assembly-CSharp
-        m_MethodName: OnReplayButton
+        m_MethodName: HandleReplayButton
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
