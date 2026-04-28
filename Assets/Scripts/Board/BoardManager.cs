@@ -99,6 +99,9 @@ public class BoardManager : MonoBehaviour
         purpleGemsText.text = Mathf.Max(TARGET_PURPLE_GEMS - currentPurpleGems, 0).ToString();
         currentStage = 0;
 
+        firstSelected = -1;
+        secondSelected = -1;
+
         GenerateNewStage();
     }
 
@@ -218,32 +221,6 @@ public class BoardManager : MonoBehaviour
             if (FillRemainingCells(tempBoard, numberCounts, 0, finalStep, endTime))
             {
                 bool[] gemStatus = GenerateGems(0, tempBoard);
-
-                // for (int i = 0; i < tempBoard.Count; ++i)
-                // {
-                //     if (i < boardData.Count) {
-                //         boardData[i] = tempBoard[i];
-                //         cellViews[i].UpdateValue(tempBoard[i]);
-                //     }
-                //     else
-                //     {
-                //         boardData.Add(tempBoard[i]);
-                //         AddCell(tempBoard[i]);
-                //     }
-
-                //     if (gemStatus[i] == true)
-                //     {
-                //         List<int> gemsType = new List<int>();
-                //         if (TARGET_PINK_GEMS - currentPinkGems > 0) 
-                //             gemsType.Add(1);
-                //         if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) 
-                //             gemsType.Add(2);
-                //         if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) {
-                //             gemsType.Add(3);
-                //         }
-                //         cellViews[i].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
-                //     }
-                // }
 
                 StartCoroutine(DisplayCellsSequentially(tempBoard, gemStatus, 0));
                 
@@ -1239,32 +1216,6 @@ public class BoardManager : MonoBehaviour
         }
 
         bool[] gemStatus = GenerateGems(startIndex, remaining);
-
-        // for (int i = 0; i < remaining.Count; ++i)
-        // {
-        //     if (startIndex + i < boardData.Count) {
-        //         boardData[startIndex + i] = remaining[i];
-        //         cellViews[startIndex + i].UpdateValue(remaining[i]);
-        //     }
-        //     else
-        //     {
-        //         boardData.Add(remaining[i]);
-        //         AddCell(remaining[i]);
-        //     }
-
-        //     if (gemStatus[i] == true)
-        //     {
-        //         List<int> gemsType = new List<int>();
-        //         if (TARGET_PINK_GEMS - currentPinkGems > 0) 
-        //             gemsType.Add(1);
-        //         if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) 
-        //             gemsType.Add(2);
-        //         if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) {
-        //             gemsType.Add(3);
-        //         }
-        //         cellViews[startIndex + i].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
-        //     }
-        // }
 
         StartCoroutine(DisplayCellsSequentially(remaining, gemStatus, startIndex));
 
