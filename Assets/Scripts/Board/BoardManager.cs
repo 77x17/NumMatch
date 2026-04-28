@@ -137,6 +137,53 @@ public class BoardManager : MonoBehaviour
         }
     }
 
+    private IEnumerator DisplayCellsSequentially(List<int> valuesToDisplay, bool[] gemStatus, int startIndex)
+    {
+        isAnimating = true; // Chặn các thao tác khác khi đang chạy animation
+
+        float delayTime = 1.0f / valuesToDisplay.Count;
+
+        for (int i = 0; i < valuesToDisplay.Count; i++)
+        {
+            int currentIndex = startIndex + i;
+            int value = valuesToDisplay[i];
+
+            // 1. Cập nhật hoặc Thêm Cell mới
+            if (currentIndex < cellViews.Count)
+            {
+                boardData[currentIndex] = value;
+                cellViews[currentIndex].UpdateValue(value);
+            }
+            else
+            {
+                boardData.Add(value);
+                AddCell(value); // Giả định AddCell của bạn khởi tạo cellViews[currentIndex]
+            }
+
+            // 2. Xử lý Gem (nếu có)
+            if (gemStatus[i])
+            {
+                List<int> gemsType = new List<int>();
+                if (TARGET_PINK_GEMS - currentPinkGems > 0) gemsType.Add(1);
+                if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) gemsType.Add(2);
+                if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) gemsType.Add(3);
+
+                if (gemsType.Count > 0)
+                {
+                    cellViews[currentIndex].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
+                }
+            }
+
+            // 3. Hiệu ứng âm thanh nhỏ mỗi lần hiện số (tùy chọn)
+            // audioSource.PlayOneShot(tickSound, 0.5f);
+
+            // 4. Chờ 0.1 giây trước khi hiện số tiếp theo
+            yield return new WaitForSeconds(delayTime);
+        }
+
+        isAnimating = false;
+    }
+
     private void GenerateNewStage()
     {
         ++currentStage;
@@ -172,31 +219,33 @@ public class BoardManager : MonoBehaviour
             {
                 bool[] gemStatus = GenerateGems(0, tempBoard);
 
-                for (int i = 0; i < tempBoard.Count; ++i)
-                {
-                    if (i < boardData.Count) {
-                        boardData[i] = tempBoard[i];
-                        cellViews[i].UpdateValue(tempBoard[i]);
-                    }
-                    else
-                    {
-                        boardData.Add(tempBoard[i]);
-                        AddCell(tempBoard[i]);
-                    }
+                // for (int i = 0; i < tempBoard.Count; ++i)
+                // {
+                //     if (i < boardData.Count) {
+                //         boardData[i] = tempBoard[i];
+                //         cellViews[i].UpdateValue(tempBoard[i]);
+                //     }
+                //     else
+                //     {
+                //         boardData.Add(tempBoard[i]);
+                //         AddCell(tempBoard[i]);
+                //     }
 
-                    if (gemStatus[i] == true)
-                    {
-                        List<int> gemsType = new List<int>();
-                        if (TARGET_PINK_GEMS - currentPinkGems > 0) 
-                            gemsType.Add(1);
-                        if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) 
-                            gemsType.Add(2);
-                        if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) {
-                            gemsType.Add(3);
-                        }
-                        cellViews[i].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
-                    }
-                }
+                //     if (gemStatus[i] == true)
+                //     {
+                //         List<int> gemsType = new List<int>();
+                //         if (TARGET_PINK_GEMS - currentPinkGems > 0) 
+                //             gemsType.Add(1);
+                //         if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) 
+                //             gemsType.Add(2);
+                //         if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) {
+                //             gemsType.Add(3);
+                //         }
+                //         cellViews[i].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
+                //     }
+                // }
+
+                StartCoroutine(DisplayCellsSequentially(tempBoard, gemStatus, 0));
                 
                 Debug.Log($"[Generate New Stage] - Stage: {currentStage} with { CountMatchPairs(tempBoard) } pairs.");
                 
@@ -555,6 +604,66 @@ public class BoardManager : MonoBehaviour
         return CanMatch(a, b, boardData);
     }
 
+    private List<int> GetBlockingIndices(int a, int b)
+    {
+        List<int> blockers = new List<int>();
+        if (a > b) { int temp = a; a = b; b = temp; }
+
+        int r1 = a / COLUMNS, c1 = a % COLUMNS;
+        int r2 = b / COLUMNS, c2 = b % COLUMNS;
+
+        // 1. Kiểm tra Ngang (cùng hàng)
+        if (r1 == r2)
+        {
+            for (int i = a + 1; i < b; ++i)
+                if (boardData[i] > 0) blockers.Add(i);
+            return blockers; 
+        }
+
+        // 2. Kiểm tra Dọc (cùng cột)
+        if (c1 == c2)
+        {
+            for (int i = a + COLUMNS; i < b; i += COLUMNS)
+                if (boardData[i] > 0) blockers.Add(i);
+            return blockers;
+        }
+
+        // 3. Kiểm tra Đường chéo chính
+        if (r1 - c1 == r2 - c2)
+        {
+            int i = r1 + 1, j = c1 + 1;
+            while (i < r2 && j < c2)
+            {
+                int idx = i * COLUMNS + j;
+                if (boardData[idx] > 0) blockers.Add(idx);
+                i++; j++;
+            }
+            return blockers;
+        }
+
+        // 4. Kiểm tra Đường chéo phụ
+        if (r1 + c1 == r2 + c2)
+        {
+            int i = r1 + 1, j = c1 - 1;
+            while (i < r2 && j > c2)
+            {
+                int idx = i * COLUMNS + j;
+                if (boardData[idx] > 0) blockers.Add(idx);
+                i++; j--;
+            }
+            return blockers;
+        }
+
+        // 5. Mặc định: Kiểm tra theo thứ tự index (Case tăng dần/nhảy hàng)
+        // Nếu không thuộc 4 trường hợp hình học trên, ta lấy tất cả các ô ở giữa theo index
+        for (int i = a + 1; i < b; ++i)
+        {
+            if (boardData[i] > 0) blockers.Add(i);
+        }
+
+        return blockers;
+    }
+
     private void EvaluateMatch()
     {
         bool matched = CanMatch(firstSelected, secondSelected);
@@ -586,6 +695,22 @@ public class BoardManager : MonoBehaviour
         }
         else
         {
+            // Lấy danh sách các ô đang chặn đường
+            List<int> blockingIndices = GetBlockingIndices(firstSelected, secondSelected);
+
+            // Cho tất cả các ô đó "rung" lên
+            foreach (int idx in blockingIndices)
+            {
+                if (idx >= 0 && idx < cellViews.Count)
+                {
+                    cellViews[idx].Shake();
+                }
+            }
+
+            // Đồng thời làm rung cả 2 ô đang được chọn để báo hiệu "Không thể nối"
+            cellViews[firstSelected].Shake();
+            cellViews[secondSelected].Shake();
+
             Deselect(firstSelected);
             Deselect(secondSelected);
         }   
@@ -1115,31 +1240,33 @@ public class BoardManager : MonoBehaviour
 
         bool[] gemStatus = GenerateGems(startIndex, remaining);
 
-        for (int i = 0; i < remaining.Count; ++i)
-        {
-            if (startIndex + i < boardData.Count) {
-                boardData[startIndex + i] = remaining[i];
-                cellViews[startIndex + i].UpdateValue(remaining[i]);
-            }
-            else
-            {
-                boardData.Add(remaining[i]);
-                AddCell(remaining[i]);
-            }
+        // for (int i = 0; i < remaining.Count; ++i)
+        // {
+        //     if (startIndex + i < boardData.Count) {
+        //         boardData[startIndex + i] = remaining[i];
+        //         cellViews[startIndex + i].UpdateValue(remaining[i]);
+        //     }
+        //     else
+        //     {
+        //         boardData.Add(remaining[i]);
+        //         AddCell(remaining[i]);
+        //     }
 
-            if (gemStatus[i] == true)
-            {
-                List<int> gemsType = new List<int>();
-                if (TARGET_PINK_GEMS - currentPinkGems > 0) 
-                    gemsType.Add(1);
-                if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) 
-                    gemsType.Add(2);
-                if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) {
-                    gemsType.Add(3);
-                }
-                cellViews[startIndex + i].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
-            }
-        }
+        //     if (gemStatus[i] == true)
+        //     {
+        //         List<int> gemsType = new List<int>();
+        //         if (TARGET_PINK_GEMS - currentPinkGems > 0) 
+        //             gemsType.Add(1);
+        //         if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) 
+        //             gemsType.Add(2);
+        //         if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) {
+        //             gemsType.Add(3);
+        //         }
+        //         cellViews[startIndex + i].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
+        //     }
+        // }
+
+        StartCoroutine(DisplayCellsSequentially(remaining, gemStatus, startIndex));
 
         --addButtonCounter;
         addButtonNumberText.text = addButtonCounter.ToString();

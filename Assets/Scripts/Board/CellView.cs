@@ -249,4 +249,46 @@ public class CellView : MonoBehaviour {
             numberText.color = normalTextColor;
         }
     }
+
+    public void Shake()
+    {
+        // Nếu ô đang chạy animation biến mất thì không rung
+        if (Value == 0) return; 
+        
+        if (activeAnimation != null) StopCoroutine(activeAnimation);
+        activeAnimation = StartCoroutine(ShakeRoutine());
+    }
+
+    private IEnumerator ShakeRoutine()
+    {
+        // Lưu lại vị trí gốc của Text (không phải của cả Cell)
+        Vector3 originalTextPos = numberText.transform.localPosition;
+        
+        float elapsed = 0f;
+        float duration = 0.25f;    // Thời gian rung
+        float magnitude = 15f;    // Độ rộng của cú rung (pixel)
+        float frequency = 40f;    // Tốc độ rung (càng cao rung càng nhanh)
+
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+
+            // Sử dụng hàm Sin để tạo chuyển động qua lại đồng nhất
+            // Sin(elapsed * frequency) sẽ trả về giá trị từ -1 đến 1 theo chu kỳ
+            float xOffset = Mathf.Sin(elapsed * frequency) * magnitude;
+
+            // Chỉ áp dụng xOffset vào trục X của numberText
+            numberText.transform.localPosition = new Vector3(
+                originalTextPos.x + xOffset, 
+                originalTextPos.y, 
+                originalTextPos.z
+            );
+
+            yield return null;
+        }
+
+        // Trả Text về vị trí chính giữa ban đầu
+        numberText.transform.localPosition = originalTextPos;
+        activeAnimation = null;
+    }
 }
