@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using DG.Tweening;
 
 public class BoardManager : MonoBehaviour
 {
     [Header("References")]
     // SerializeField cho phép chỉnh sửa trong Unity Editor thay vì public nên vẫn đảm bảo tính đóng gói.
     [SerializeField] private GameObject cellPrefab; // Cell.prefab
+    [SerializeField] private ScrollRect scrollRect;
     [SerializeField] private Transform contentParent; // Content
     [SerializeField] private RectTransform viewportRect; // Kéo Viewport vào đây
     [SerializeField] private GridLayoutGroup gridLayout;  // Kéo GridLayoutGroup vào đây
@@ -43,6 +45,8 @@ public class BoardManager : MonoBehaviour
     [SerializeField] private AudioClip pop2Sound;
     [SerializeField] private AudioClip rowClearSound;
     [SerializeField] private AudioClip gemCollectSound;
+    [SerializeField] private AudioClip writeSound;
+    [SerializeField] private AudioClip wrongSound;
 
     private List<int>[] neighborsCache;
 
@@ -120,6 +124,55 @@ public class BoardManager : MonoBehaviour
     }
 
 
+    public void UpdateBoard()
+    {
+        int lastValue = -1;
+        for (int i = boardData.Count - 1; i >= 0; --i)
+        {
+            if (boardData[i] != 0) {
+                lastValue = i;
+                break;
+            }
+        }
+
+        while (boardData.Count < 9 * COLUMNS || (lastValue != -1 && boardData.Count - lastValue - 1 < 3 * COLUMNS))
+        {
+            CreateNewLine();
+        }
+
+        while (boardData.Count % 9 != 0)
+        {
+            boardData.Add(0);
+            AddCell(0);
+        }
+
+        UpdateScrollState(boardData.Count);
+    }
+    public void UpdateScrollState(int boardSize)
+    {
+        if (scrollRect == null) return;
+
+        if (boardSize > 81)
+        {
+            // Kích hoạt khả năng cuộn dọc
+            scrollRect.vertical = true;
+            
+            // (Tùy chọn) Cho phép hiệu ứng đàn hồi khi kéo quá đà
+            scrollRect.movementType = ScrollRect.MovementType.Elastic;
+        }
+        else
+        {
+            // Đưa Content về vị trí đầu (top) trước khi khóa
+            scrollRect.verticalNormalizedPosition = 1f;
+            
+            // Khóa cuộn dọc
+            scrollRect.vertical = false;
+            
+            // Đổi sang Clamped để tránh việc Content bị lệch khi board nhỏ
+            scrollRect.movementType = ScrollRect.MovementType.Clamped;
+        }
+    }
+
     private void AddCell(int x)
     {
         GameObject go = Instantiate(cellPrefab, contentParent);
@@ -144,7 +197,9 @@ public class BoardManager : MonoBehaviour
     {
         isAnimating = true; // Chặn các thao tác khác khi đang chạy animation
 
-        float delayTime = 1.0f / valuesToDisplay.Count;
+        float delayTime = Mathf.Max(0.03f, 0.5f / valuesToDisplay.Count);
+
+        audioSource.PlayOneShot(writeSound);
 
         for (int i = 0; i < valuesToDisplay.Count; i++)
         {
@@ -163,6 +218,17 @@ public class BoardManager : MonoBehaviour
                 AddCell(value); // Giả định AddCell của bạn khởi tạo cellViews[currentIndex]
             }
 
+            Transform cellTransform = cellViews[currentIndex].transform;
+            // --- JUICE: HIỆU ỨNG POP-UP ---
+            // Thay vì khởi tạo từ 0.5 (quá nhỏ) hoặc 0, ta khởi tạo từ 0.8 để hiệu ứng "ngắn" và mượt hơn
+            cellTransform.localScale = Vector3.one * 0.8f;
+            // / Sử dụng Ease.OutBack nhưng thêm tham số phụ để giảm độ nảy (Overshoot)
+            // Mặc định giá trị này là 1.7, ta giảm xuống 1.0 hoặc 1.2 để nó nảy nhẹ thôi
+            cellTransform.DOScale(Vector3.one, 0.4f) // Tăng thời gian lên một chút (0.4s) để cảm thấy "trôi" hơn
+                        .SetEase(Ease.OutBack, 1.0f); // Giá trị 1.0f giúp cú nảy cực kỳ tinh tế
+            // Nếu muốn mượt tuyệt đối, không nảy:
+            // cellTransform.DOScale(Vector3.one, 0.35f).SetEase(Ease.OutCubic);
+
             // 2. Xử lý Gem (nếu có)
             if (gemStatus[i])
             {
@@ -174,17 +240,21 @@ public class BoardManager : MonoBehaviour
                 if (gemsType.Count > 0)
                 {
                     cellViews[currentIndex].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
+                    
+                    // (Tùy chọn) Thêm một chút xoay nhẹ nếu bạn muốn tăng độ "Juicy"
+                    cellTransform.DOPunchRotation(new Vector3(0, 0, 10f), 0.5f, 2, 0.5f);
+
+                    cellTransform.localScale = Vector3.one;
                 }
             }
-
-            // 3. Hiệu ứng âm thanh nhỏ mỗi lần hiện số (tùy chọn)
-            // audioSource.PlayOneShot(tickSound, 0.5f);
 
             // 4. Chờ 0.1 giây trước khi hiện số tiếp theo
             yield return new WaitForSeconds(delayTime);
         }
-
+        
         isAnimating = false;
+
+        UpdateBoard();
     }
 
     private void GenerateNewStage()
@@ -234,6 +304,8 @@ public class BoardManager : MonoBehaviour
             }
         }
         while (true);
+
+        UpdateBoard();
     }
 
     private int CountMatchPairs(List<int> board)
@@ -672,6 +744,8 @@ public class BoardManager : MonoBehaviour
         }
         else
         {
+            audioSource.PlayOneShot(wrongSound);
+
             // Lấy danh sách các ô đang chặn đường
             List<int> blockingIndices = GetBlockingIndices(firstSelected, secondSelected);
 
@@ -789,7 +863,7 @@ public class BoardManager : MonoBehaviour
 
     [Header("Match Line")]
     [SerializeField] private Canvas rootCanvas; // Kéo Canvas gốc (root) vào đây trong Editor
-    private float matchLineDuration = 1.0f;
+    private float matchLineDuration = 0.5f;
     [SerializeField] private Color matchLineColor = Color.yellow;
 
     private void DrawMatchLine(int a, int b)
@@ -845,17 +919,18 @@ public class BoardManager : MonoBehaviour
 
         // --- TẠO OBJECTS ---
         float lineThickness = 20f;
-        float sqSize = lineThickness * 2f;
+        float cellWidth = gridLayout.cellSize.x;
+        float cellHeight = gridLayout.cellSize.y;
 
         // Tạo 2 đoạn line
         GameObject line1 = CreateLineSegment("Line_Part1", locB, locEdgeB, lineThickness, canvasRT);
         GameObject line2 = CreateLineSegment("Line_Part2", locEdgeA, locA, lineThickness, canvasRT);
 
         // Thêm các đầu vuông (Chỉ thêm ở ô b và ô a)
-        Image capB = CreateEndCap("CapB", line1.GetComponent<RectTransform>(), sqSize);
+        Image capB = CreateEndCap("CapB", line1.GetComponent<RectTransform>(), new Vector2(cellWidth, cellHeight));
         capB.rectTransform.anchoredPosition = new Vector2(-line1.GetComponent<RectTransform>().sizeDelta.x / 2, 0);
 
-        Image capA = CreateEndCap("CapA", line2.GetComponent<RectTransform>(), sqSize);
+        Image capA = CreateEndCap("CapA", line2.GetComponent<RectTransform>(), new Vector2(cellWidth, cellHeight));
         capA.rectTransform.anchoredPosition = new Vector2(line2.GetComponent<RectTransform>().sizeDelta.x / 2, 0);
 
         // --- HIỆU ỨNG FADE ---
@@ -865,10 +940,17 @@ public class BoardManager : MonoBehaviour
         while (elapsed < matchLineDuration)
         {
             elapsed += Time.deltaTime;
-            float alpha = Mathf.Lerp(matchLineColor.a, 0f, elapsed / matchLineDuration);
+            float t = elapsed / matchLineDuration;
+
+            float alpha = Mathf.Lerp(matchLineColor.a, 0f, t);
             Color c = new Color(matchLineColor.r, matchLineColor.g, matchLineColor.b, alpha);
             
             img1.color = img2.color = capA.color = capB.color = c;
+
+            // Thu nhỏ kích thước (Scale từ 1 về 0)
+            float scale = Mathf.Lerp(1f, 0f, t);
+            capB.rectTransform.localScale = new Vector3(scale, scale, 1f);
+            capA.rectTransform.localScale = new Vector3(scale, scale, 1f);
             yield return null;
         }
 
@@ -912,7 +994,8 @@ public class BoardManager : MonoBehaviour
 
         // Cấu hình thông số Line
         float lineThickness = 20f; // Độ rộng của line
-        float squareSize = lineThickness * 2f; // Kích thước hình vuông đầu cuối
+        float cellWidth = gridLayout.cellSize.x;
+        float cellHeight = gridLayout.cellSize.y;
 
         // Tạo line object — parent là Canvas gốc, KHÔNG phải contentParent
         GameObject lineObj = new GameObject("MatchLine", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
@@ -936,25 +1019,36 @@ public class BoardManager : MonoBehaviour
         lineImg.color = matchLineColor;
 
         // Tạo 2 hình vuông ở 2 đầu (là con của lineObj)
-        Image startSquare = CreateEndCap("StartCap", lineRT, squareSize);
-        Image endSquare = CreateEndCap("EndCap", lineRT, squareSize);
+        Image startSquare = CreateEndCap("StartCap", lineRT, new Vector2(cellWidth, cellHeight));
+        Image endSquare = CreateEndCap("EndCap", lineRT, new Vector2(cellWidth, cellHeight));
 
         // Đặt vị trí 2 đầu theo local space của Line
         // Vì pivot của Line là (0.5, 0.5) nên đầu trái là -length/2, đầu phải là length/2
         startSquare.rectTransform.anchoredPosition = new Vector2(-length / 2, 0);
         endSquare.rectTransform.anchoredPosition = new Vector2(length / 2, 0);
 
+        startSquare.rectTransform.localEulerAngles = new Vector3(0, 0, -angle);
+        endSquare.rectTransform.localEulerAngles = new Vector3(0, 0, -angle);
+
         // Fade out
         float elapsed = 0f;
         while (elapsed < matchLineDuration)
         {
             elapsed += Time.deltaTime;
-            float alpha = Mathf.Lerp(matchLineColor.a, 0f, elapsed / matchLineDuration);
+            float normalizedTime = elapsed / matchLineDuration;
+            float t = Mathf.Pow(normalizedTime, 3);
+
+            float alpha = Mathf.Lerp(matchLineColor.a, 0f, t);
             Color newColor = new Color(matchLineColor.r, matchLineColor.g, matchLineColor.b, alpha);
 
             lineImg.color = newColor;
             startSquare.color = newColor;
             endSquare.color = newColor;
+
+            // Thu nhỏ kích thước (Scale từ 1 về 0)
+            float scale = Mathf.Lerp(1f, 0f, t);
+            startSquare.rectTransform.localScale = new Vector3(scale, scale, 1f);
+            endSquare.rectTransform.localScale = new Vector3(scale, scale, 1f);
 
             yield return null;
         }
@@ -962,13 +1056,13 @@ public class BoardManager : MonoBehaviour
         Destroy(lineObj);
     }
 
-    private Image CreateEndCap(string name, RectTransform parent, float size)
+    private Image CreateEndCap(string name, RectTransform parent, Vector2 size)
     {
         GameObject capObj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         capObj.transform.SetParent(parent, false);
         
         RectTransform capRT = capObj.GetComponent<RectTransform>();
-        capRT.sizeDelta = new Vector2(size, size);
+        capRT.sizeDelta = size;
         
         Image capImg = capObj.GetComponent<Image>();
         capImg.color = matchLineColor; // Gán màu ban đầu
@@ -1053,7 +1147,7 @@ public class BoardManager : MonoBehaviour
         int endB   = System.Math.Min(startB + COLUMNS, boardData.Count);
 
         // ── Fade tuần tự từng ô trái → phải, 2 dòng song song với nhau ──
-        float fadeDuration = 0.1f; // mỗi ô mất 0.1s
+        float fadeDuration = 0.5f / 9; // mỗi ô mất 0.1s
         int lineLength = COLUMNS; // số ô mỗi dòng
         for (int col = 0; col < lineLength; ++col)
         {
@@ -1076,7 +1170,6 @@ public class BoardManager : MonoBehaviour
             // Chờ ô hiện tại (ở cả 2 dòng) fade xong rồi mới qua ô tiếp theo
             foreach (var c in pending)
                 yield return c;
-                // yield return new WaitForSeconds(fadeDuration * 0.5f);
         }
 
         // Xoá dòng có index lớn hơn trước để không làm lệch index dòng còn lại
@@ -1144,8 +1237,7 @@ public class BoardManager : MonoBehaviour
     {
         if (clearLineA || clearLineB)
         {
-            while (ShouldAddNewLine())
-                CreateNewLine();
+            UpdateBoard();
         }
 
         if (clearLineA && clearLineB && ((a < COLUMNS) || (b < COLUMNS)))
@@ -1155,13 +1247,6 @@ public class BoardManager : MonoBehaviour
         }
 
         FinalizeTurnCheck();
-    }
-
-    private bool ShouldAddNewLine()
-    {
-        if (boardData.Count < 9 * COLUMNS) return true;
-
-        return false;
     }
 
     private bool CheckFinishedStage()

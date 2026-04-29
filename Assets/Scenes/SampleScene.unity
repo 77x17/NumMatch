@@ -417,7 +417,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_FirstSelected: {fileID: 0}
   m_sendNavigationEvents: 1
-  m_DragThreshold: 10
+  m_DragThreshold: 30
 --- !u!4 &236581401
 Transform:
   m_ObjectHideFlags: 0
@@ -4171,6 +4171,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   cellPrefab: {fileID: 858263895561381990, guid: ce5db1e9b1e102d45bf282b2a46e01d3, type: 3}
+  scrollRect: {fileID: 1346787836}
   contentParent: {fileID: 1406952962}
   viewportRect: {fileID: 131086655}
   gridLayout: {fileID: 1406952963}
@@ -4183,9 +4184,11 @@ MonoBehaviour:
   audioSource: {fileID: 1589006804}
   chooseNumberSound: {fileID: 8300000, guid: 97912ba0d6bc25449a13edde6880abb1, type: 3}
   pairClearSound: {fileID: 8300000, guid: bb99e6ba90f4f284ea97bd8091fb8188, type: 3}
-  pop2Sound: {fileID: 8300000, guid: 5f74de2bf63d199419dedb9c05f742aa, type: 3}
+  pop2Sound: {fileID: 8300000, guid: ea9de31800a2c4240b98ee906adffb7f, type: 3}
   rowClearSound: {fileID: 8300000, guid: fd7c8043c94e7664e842df6fd2851b2d, type: 3}
   gemCollectSound: {fileID: 8300000, guid: c43fb0bc06b122c44b5c872eee78a970, type: 3}
+  writeSound: {fileID: 8300000, guid: f21495477ca9a7f408cadb733250f4b9, type: 3}
+  wrongSound: {fileID: 8300000, guid: 75bdf12804a5bf04cb713f0ca0f4631c, type: 3}
   pinkGemsText: {fileID: 1517898497}
   orangeGemsText: {fileID: 522000160}
   purpleGemsText: {fileID: 559455087}
