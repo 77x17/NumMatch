@@ -4,6 +4,7 @@ using TMPro;
 using System;
 using System.Collections;
 using UnityEngine.EventSystems;
+using DG.Tweening;
 
 public enum GemType { None, Pink, Orange, Purple };
 
@@ -19,6 +20,11 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
 
     [Header("Gem Backgrounds")]
     [SerializeField] private Sprite[] gemBackgroundSprites;
+
+    [Header("Components")]
+    [SerializeField] private GameObject normalHighlightOverlay;
+    // Kéo thả GameObject 'SelectionOverlay' bạn vừa tạo vào đây trong Inspector
+    [SerializeField] private GameObject selectionOverlay;
 
     private Sprite defaultSprite;
 
@@ -55,7 +61,7 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
             numberText.text = value.ToString();
             numberText.color = normalTextColor;
         }
-        SetHighlight(false);
+        // SetHighlight(false);
 
         GemType = GemType.None;
         ApplyGemBackground(GemType);
@@ -85,58 +91,86 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
 
     public void SetHighlight(bool isSelected)
     {
-        backgroundImage.color = isSelected ? selectedColor : normalColor;
+        if (GemType != GemType.None && selectionOverlay != null)
+        {
+            // Overlay chỉ xuất hiện khi ô được CHỌN và ô đó LÀ GEM
+            bool showOverlay = isSelected && (GemType != GemType.None);
+            selectionOverlay.SetActive(showOverlay);
+
+            if (showOverlay)
+            {
+                selectionOverlay.transform.DOKill();
+                selectionOverlay.transform.localScale = Vector3.one * 0.5f; // Bắt đầu từ nhỏ
+                selectionOverlay.transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutBack); // Phóng lớn nảy nhẹ
+
+                numberText.color = Color.yellow;
+            }
+            else
+            {
+                numberText.color = Color.white;
+            }
+        }
+        else 
+        {
+            if (normalHighlightOverlay != null)
+            {
+                normalHighlightOverlay.transform.DOKill();
+
+                if (isSelected)
+                {
+                    normalHighlightOverlay.SetActive(true);
+                    normalHighlightOverlay.transform.localScale = Vector3.zero;
+                    normalHighlightOverlay.transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutCubic);
+                }
+                else
+                {
+                    normalHighlightOverlay.transform.DOScale(Vector3.zero, 0.15f)
+                        .SetEase(Ease.InCubic)
+                        .OnComplete(() => normalHighlightOverlay.SetActive(false));
+                }
+            }
+            
+            // Background chính giữ nguyên màu normalColor để làm nền cho màu vàng phóng lên
+            backgroundImage.color = normalColor;
+        }
+
+        // Hiệu ứng nhích nhẹ toàn bộ ô để tăng cảm giác vật lý
+        float targetScale = isSelected ? 1.05f : 1.0f;
+        transform.DOScale(targetScale, 0.2f).SetEase(Ease.OutQuad);
     }
 
     // Gọi hàm này khi hai số đã Match
     public int SetCleared()
     {
         Value = 0;
-        backgroundImage.color = normalColor;
+        selectionOverlay.SetActive(false);
 
         int gemType = (int)GemType;
 
         GemType = GemType.None;
         ApplyGemBackground(GemType);
 
-        backgroundImage.color = normalColor;
-        numberText.color      = matchedTextColor;
+        SetHighlight(false);
+        numberText.color = matchedTextColor;
 
         return gemType;
     }
 
-    // Chỉ fade out, không fade in - dùng cho clear line
-    public IEnumerator FadeOutOnly(float duration)
+    public void PlayClearAnimation(float duration)
     {
-        // Dừng ClearAnimation (hoặc bất kỳ animation nào) trước khi chạy
-        if (activeAnimation != null)
-        {
-            StopCoroutine(activeAnimation);
-            activeAnimation = null;
+        // numberText.DOKill();
+        if (numberText != null) {
+            numberText.DOFade(0f, duration).SetEase(Ease.InQuad);
         }
+        // Tạo chuỗi animation cho Scale
+        Sequence s = DOTween.Sequence();
+        
+        // Thu nhỏ lại từ từ để lấy đà (70%)
+        s.Append(transform.DOScale(Vector3.one * 0.7f, duration * 0.3f).SetEase(Ease.OutQuad));
 
-        float elapsed = 0f;
-        Color bgColor  = backgroundImage.color;
-        Color txtColor = numberText.color;
-        float startScale = transform.localScale.x;
-
-        while (elapsed < duration)
-        {
-            // Dừng ngay nếu object đã bị destroy
-            if (this == null || gameObject == null) yield break;
-
-            elapsed += Time.deltaTime;
-            float t     = Mathf.Clamp01(elapsed / duration);
-            float eased = 1f - Mathf.Pow(1f - t, 2f);
-
-            numberText.color = new Color(txtColor.r, txtColor.g, txtColor.b, Mathf.Lerp(txtColor.a, 0f, eased));
-
-            yield return null;
-        }
-
-        if (this == null || gameObject == null) yield break;
-
-        numberText.color      = new Color(txtColor.r, txtColor.g, txtColor.b, 0f);
+        // Bật mạnh lại kích thước cũ thật nhanh (30%) 
+        // Dùng Ease.OutBack để nó hơi nở quá 1.0 một chút rồi mới dừng lại, cực kỳ mượt!
+        s.Append(transform.DOScale(Vector3.one, duration * 0.7f).SetEase(Ease.OutBack));
     }
 
     // Cập nhật lại index và vị trí mới

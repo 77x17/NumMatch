@@ -146,13 +146,13 @@ public class BoardManager : MonoBehaviour
             AddCell(0);
         }
 
-        UpdateScrollState(boardData.Count);
+        UpdateScrollState(lastValue, boardData.Count);
     }
-    public void UpdateScrollState(int boardSize)
+    public void UpdateScrollState(int lastValue, int boardSize)
     {
         if (scrollRect == null) return;
 
-        if (boardSize > 81)
+        if (boardSize > 81 && lastValue > 81)
         {
             // Kích hoạt khả năng cuộn dọc
             scrollRect.vertical = true;
@@ -195,66 +195,76 @@ public class BoardManager : MonoBehaviour
 
     private IEnumerator DisplayCellsSequentially(List<int> valuesToDisplay, bool[] gemStatus, int startIndex)
     {
-        isAnimating = true; // Chặn các thao tác khác khi đang chạy animation
-
-        float delayTime = Mathf.Max(0.03f, 0.5f / valuesToDisplay.Count);
+        isAnimating = true;
+        
+        // Tính toán delayTime dựa trên tối đa 30 phần tử để tốc độ vẽ không bị quá chậm
+        int countToAnimate = Mathf.Min(valuesToDisplay.Count, 30);
+        float delayTime = Mathf.Max(0.03f, 0.5f / countToAnimate);
 
         audioSource.PlayOneShot(writeSound);
 
         for (int i = 0; i < valuesToDisplay.Count; i++)
         {
             int currentIndex = startIndex + i;
-            int value = valuesToDisplay[i];
+            
+            // 1. Cập nhật dữ liệu và Gem (Logic chung)
+            UpdateOrAddCell(currentIndex, valuesToDisplay[i], gemStatus[i]);
 
-            // 1. Cập nhật hoặc Thêm Cell mới
-            if (currentIndex < cellViews.Count)
+            Transform cellTransform = cellViews[currentIndex].transform;
+
+            // 2. Kiểm tra điều kiện vẽ: Chỉ vẽ hiệu ứng cho 30 phần tử đầu tiên
+            if (i < countToAnimate)
             {
-                boardData[currentIndex] = value;
-                cellViews[currentIndex].UpdateValue(value);
+                // Hiệu ứng Pop-up mượt mà
+                cellTransform.localScale = Vector3.one * 0.8f;
+                cellTransform.DOScale(Vector3.one, 0.4f).SetEase(Ease.OutBack, 1.0f);
+
+                if (gemStatus[i])
+                {
+                    cellTransform.DOPunchRotation(new Vector3(0, 0, 10f), 0.5f, 2, 0.5f);
+                }
+
+                // Chờ trước khi qua ô tiếp theo
+                yield return new WaitForSeconds(delayTime);
             }
             else
             {
-                boardData.Add(value);
-                AddCell(value); // Giả định AddCell của bạn khởi tạo cellViews[currentIndex]
+                // Các phần tử từ 31 trở đi: Hiện ngay lập tức
+                cellTransform.localScale = Vector3.one;
             }
-
-            Transform cellTransform = cellViews[currentIndex].transform;
-            // --- JUICE: HIỆU ỨNG POP-UP ---
-            // Thay vì khởi tạo từ 0.5 (quá nhỏ) hoặc 0, ta khởi tạo từ 0.8 để hiệu ứng "ngắn" và mượt hơn
-            cellTransform.localScale = Vector3.one * 0.8f;
-            // / Sử dụng Ease.OutBack nhưng thêm tham số phụ để giảm độ nảy (Overshoot)
-            // Mặc định giá trị này là 1.7, ta giảm xuống 1.0 hoặc 1.2 để nó nảy nhẹ thôi
-            cellTransform.DOScale(Vector3.one, 0.4f) // Tăng thời gian lên một chút (0.4s) để cảm thấy "trôi" hơn
-                        .SetEase(Ease.OutBack, 1.0f); // Giá trị 1.0f giúp cú nảy cực kỳ tinh tế
-            // Nếu muốn mượt tuyệt đối, không nảy:
-            // cellTransform.DOScale(Vector3.one, 0.35f).SetEase(Ease.OutCubic);
-
-            // 2. Xử lý Gem (nếu có)
-            if (gemStatus[i])
-            {
-                List<int> gemsType = new List<int>();
-                if (TARGET_PINK_GEMS - currentPinkGems > 0) gemsType.Add(1);
-                if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) gemsType.Add(2);
-                if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) gemsType.Add(3);
-
-                if (gemsType.Count > 0)
-                {
-                    cellViews[currentIndex].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
-                    
-                    // (Tùy chọn) Thêm một chút xoay nhẹ nếu bạn muốn tăng độ "Juicy"
-                    cellTransform.DOPunchRotation(new Vector3(0, 0, 10f), 0.5f, 2, 0.5f);
-
-                    cellTransform.localScale = Vector3.one;
-                }
-            }
-
-            // 4. Chờ 0.1 giây trước khi hiện số tiếp theo
-            yield return new WaitForSeconds(delayTime);
         }
-        
-        isAnimating = false;
 
+        isAnimating = false;
         UpdateBoard();
+    }
+
+    // Hàm hỗ trợ cập nhật dữ liệu để code gọn gàng hơn
+    private void UpdateOrAddCell(int currentIndex, int value, bool isGem)
+    {
+        if (currentIndex < cellViews.Count)
+        {
+            boardData[currentIndex] = value;
+            cellViews[currentIndex].UpdateValue(value);
+        }
+        else
+        {
+            boardData.Add(value);
+            AddCell(value); 
+        }
+
+        if (isGem)
+        {
+            // Logic SetGem của bạn...
+            List<int> gemsType = new List<int>();
+            if (TARGET_PINK_GEMS - currentPinkGems > 0) gemsType.Add(1);
+            if (TARGET_ORANGE_GEMS - currentOrangeGems > 0) gemsType.Add(2);
+            if (TARGET_PURPLE_GEMS - currentPurpleGems > 0) gemsType.Add(3);
+
+            if (gemsType.Count > 0)
+            {
+                cellViews[currentIndex].SetGem(gemsType[Random.Range(0, gemsType.Count)]);
+            }
+        }
     }
 
     private void GenerateNewStage()
@@ -833,34 +843,6 @@ public class BoardManager : MonoBehaviour
         return true;
     }
 
-    // Thực sự xoá data + animate - gọi sau khi đã biết kết quả
-    private IEnumerator ProcessClearLineAsync(int startIndex, int endIndex, int a)
-    {
-        float fadeDuration = 0.35f;
-
-        // Fade out đồng loạt
-        for (int i = startIndex; i < endIndex; ++i)
-            if (cellViews[i] != null)
-                StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration));
-
-        yield return new WaitForSeconds(fadeDuration);
-
-        // Xoá và dịch lên
-        for (int i = startIndex; i < endIndex; ++i)
-            if (cellViews[i] != null) Destroy(cellViews[i].gameObject);
-
-        int actualCountToDelete = endIndex - startIndex;
-        if (actualCountToDelete > 0)
-        {
-            boardData.RemoveRange(startIndex, actualCountToDelete);
-            cellViews.RemoveRange(startIndex, actualCountToDelete);
-        }
-
-        Debug.Log($"[Clear line]: [{a / COLUMNS}]: boardData.Count {boardData.Count}; cellViews.Count {cellViews.Count}");
-
-        UpdateCellsIndex(a);
-    }
-
     [Header("Match Line")]
     [SerializeField] private Canvas rootCanvas; // Kéo Canvas gốc (root) vào đây trong Editor
     private float matchLineDuration = 0.5f;
@@ -1054,6 +1036,48 @@ public class BoardManager : MonoBehaviour
         }
 
         Destroy(lineObj);
+
+        // ==========================================
+        // 3. KÍCH HOẠT HIỆU ỨNG GIỌT NƯỚC (RIPPLE)
+        // ==========================================
+        // Lấy kích thước trung bình của cell để làm base size cho giọt nước
+        float dropSize = (cellWidth + cellHeight) / 2f; 
+        
+        CreateWaterDropEffect(localA, dropSize, canvasRT);
+        CreateWaterDropEffect(localB, dropSize, canvasRT);
+    }
+
+    // Hàm mới: Tạo hiệu ứng giọt nước nổ ra rồi mờ đi
+    private void CreateWaterDropEffect(Vector2 localPosition, float size, RectTransform parentCanvas)
+    {
+        // Tạo object giọt nước
+        GameObject dropObj = new GameObject("WaterDropRipple", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        dropObj.transform.SetParent(parentCanvas, false);
+        
+        RectTransform dropRT = dropObj.GetComponent<RectTransform>();
+        dropRT.anchoredPosition = localPosition;
+        dropRT.sizeDelta = new Vector2(size, size);
+        
+        Image dropImg = dropObj.GetComponent<Image>();
+        dropImg.color = matchLineColor; // Lấy cùng màu với Line
+        
+        // MẸO UX: Bạn nên gán một Sprite hình tròn (Circle) vào đây
+        // dropImg.sprite = yourCircleSprite; 
+
+        // Bắt đầu scale từ 0.5 (nhỏ xíu)
+        dropRT.localScale = Vector3.one * 0.5f;
+
+        // Chạy Animation cho giọt nước
+        Sequence dropSeq = DOTween.Sequence();
+        
+        // Phóng to ra gấp 1.5 hoặc 2 lần (thời gian 0.4s)
+        dropSeq.Append(dropRT.DOScale(Vector3.one * 1.4f, 0.2f).SetEase(Ease.OutQuad));
+        
+        // ĐỒNG THỜI (Join): Làm mờ Alpha về 0
+        dropSeq.Join(dropImg.DOFade(0f, 0.4f).SetEase(Ease.OutQuad));
+        
+        // Khi animation kết thúc, tự động dọn dẹp (Destroy) object này
+        dropSeq.OnComplete(() => Destroy(dropObj));
     }
 
     private Image CreateEndCap(string name, RectTransform parent, Vector2 size)
@@ -1123,7 +1147,6 @@ public class BoardManager : MonoBehaviour
         if (clearLineA || clearLineB)
         {
             audioSource.PlayOneShot(rowClearSound);
-            isAnimating = true;
 
             // Kick off animation, truyền callback để chạy phần còn lại sau
             StartCoroutine(ProcessClearLinesAndContinue(a, b, clearLineA, clearLineB));
@@ -1137,66 +1160,67 @@ public class BoardManager : MonoBehaviour
 
     private IEnumerator ProcessClearLinesAndContinue(int a, int b, bool clearLineA, bool clearLineB)
     {
-        // Tính index trước khi xoá (vì RemoveRange sẽ làm lệch index)
-        int xA = a / COLUMNS;
-        int startA = xA * COLUMNS;
-        int endA   = System.Math.Min(startA + COLUMNS, boardData.Count);
+        isAnimating = true;
 
-        int xB = b / COLUMNS;
-        int startB = xB * COLUMNS;
-        int endB   = System.Math.Min(startB + COLUMNS, boardData.Count);
+        int startA = (a / COLUMNS) * COLUMNS;
+        int endA = Mathf.Min(startA + COLUMNS, cellViews.Count);
 
-        // ── Fade tuần tự từng ô trái → phải, 2 dòng song song với nhau ──
-        float fadeDuration = 0.5f / 9; // mỗi ô mất 0.1s
-        int lineLength = COLUMNS; // số ô mỗi dòng
-        for (int col = 0; col < lineLength; ++col)
+        int startB = (b / COLUMNS) * COLUMNS;
+        int endB = Mathf.Min(startB + COLUMNS, cellViews.Count);
+
+        float individualDuration = 0.3f; // Thời gian biến mất của 1 ô
+        float staggerDelay = 0.05f;      // Độ trễ giữa mỗi ô (tạo hiệu ứng gợn sóng)
+
+        // Duyệt qua từng cột để kích hoạt animation đồng thời trên cả 2 dòng
+        for (int col = 0; col < COLUMNS; col++)
         {
-            var pending = new List<Coroutine>();
+            float currentDelay = col * staggerDelay;
 
+            // Xử lý dòng A
             if (clearLineA)
             {
-                int i = startA + col;
-                if (i < endA && cellViews[i] != null)
-                    pending.Add(StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration)));
+                int idx = startA + col;
+                if (idx < endA && cellViews[idx] != null)
+                {
+                    // Dùng DOVirtual.DelayedCall để kích hoạt sau một khoảng delay
+                    int capturedIdx = idx;
+                    DOVirtual.DelayedCall(currentDelay, () => {
+                        if(cellViews[capturedIdx] != null) cellViews[capturedIdx].PlayClearAnimation(individualDuration);
+                    });
+                }
             }
 
+            // Xử lý dòng B (nếu khác dòng A)
             if (clearLineB && startB != startA)
             {
-                int i = startB + col;
-                if (i < endB && cellViews[i] != null)
-                    pending.Add(StartCoroutine(cellViews[i].FadeOutOnly(fadeDuration)));
+                int idx = startB + col;
+                if (idx < endB && cellViews[idx] != null)
+                {
+                    int capturedIdx = idx;
+                    DOVirtual.DelayedCall(currentDelay, () => {
+                        if(cellViews[capturedIdx] != null) cellViews[capturedIdx].PlayClearAnimation(individualDuration);
+                    });
+                }
             }
-
-            // Chờ ô hiện tại (ở cả 2 dòng) fade xong rồi mới qua ô tiếp theo
-            foreach (var c in pending)
-                yield return c;
         }
 
-        // Xoá dòng có index lớn hơn trước để không làm lệch index dòng còn lại
+        // Chờ đợi toàn bộ chuỗi animation kết thúc
+        // Tổng thời gian = (Số cột * delay) + thời gian animation ô cuối cùng
+        float totalWaitTime = (COLUMNS * staggerDelay) + individualDuration;
+        yield return new WaitForSeconds(totalWaitTime);
+
+        // --- PHẦN LOGIC XÓA DATA (Giữ nguyên logic thứ tự của bạn) ---
         if (clearLineA && clearLineB && startA != startB)
         {
-            int firstStart  = Mathf.Min(startA, startB);
-            int firstEnd    = Mathf.Min(endA,   endB);
+            int firstStart = Mathf.Min(startA, startB);
             int secondStart = Mathf.Max(startA, startB);
-            int secondEnd   = Mathf.Max(endA,   endB);
+            DeleteLineData(secondStart, secondStart + COLUMNS, b > a ? b : a);
+            DeleteLineData(firstStart, firstStart + COLUMNS, b > a ? a : b);
+        }
+        else if (clearLineA) DeleteLineData(startA, endA, a);
+        else if (clearLineB) DeleteLineData(startB, endB, b);
 
-            // Xoá dòng dưới (index lớn) trước
-            DeleteLineData(secondStart, secondEnd, b > a ? b : a);
-            // Xoá dòng trên (index nhỏ) sau
-            DeleteLineData(firstStart,  firstEnd,  b > a ? a : b);
-        }
-        else if (clearLineA)
-        {
-            DeleteLineData(startA, endA, a);
-        }
-        else if (clearLineB)
-        {
-            DeleteLineData(startB, endB, b);
-        }
-
-        // Tiếp tục logic sau clear
         PostClearProcess(a, b, clearLineA, clearLineB);
-
         isAnimating = false;
     }
 
