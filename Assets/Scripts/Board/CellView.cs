@@ -16,7 +16,6 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
     [Header("Visual Config")]
     [SerializeField] private Color normalColor = Color.white;
     [SerializeField] private Color selectedColor = Color.yellow;
-    [SerializeField] private Color clearedColor = new Color(1.0f, 0, 0, 0);
 
     [Header("Gem Backgrounds")]
     [SerializeField] private Sprite[] gemBackgroundSprites;
@@ -25,6 +24,8 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
     [SerializeField] private GameObject normalHighlightOverlay;
     // Kéo thả GameObject 'SelectionOverlay' bạn vừa tạo vào đây trong Inspector
     [SerializeField] private GameObject selectionOverlay;
+    [SerializeField] private GameObject previewOverlay;
+    [SerializeField] private GameObject hintOverlay;
 
     private Sprite defaultSprite;
 
@@ -65,6 +66,8 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
 
         GemType = GemType.None;
         ApplyGemBackground(GemType);
+
+        previewOverlay.transform.localScale = Vector3.zero;
     }
 
     public void OnPointerDown(PointerEventData eventData)
@@ -137,6 +140,25 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
         // Hiệu ứng nhích nhẹ toàn bộ ô để tăng cảm giác vật lý
         float targetScale = isSelected ? 1.05f : 1.0f;
         transform.DOScale(targetScale, 0.2f).SetEase(Ease.OutQuad);
+    }
+
+    public void SetPreview(bool isPreview)
+    {
+        if (previewOverlay == null) return;
+        
+        previewOverlay.transform.DOKill();
+
+        if (isPreview)
+        {
+            previewOverlay.SetActive(true);
+            previewOverlay.transform.DOScale(Vector3.one, 0.2f).SetEase(Ease.OutCubic);
+        }
+        else
+        {
+            previewOverlay.transform.DOScale(Vector3.zero, 0.15f)
+                          .SetEase(Ease.InCubic)
+                          .OnComplete(() => previewOverlay.SetActive(false));
+        }
     }
 
     // Gọi hàm này khi hai số đã Match
@@ -266,5 +288,37 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
         // Trả Text về vị trí chính giữa ban đầu
         numberText.transform.localPosition = originalTextPos;
         activeAnimation = null;
+    }
+
+    public void SetHint()
+    {
+        if (hintOverlay == null) return;
+
+        // 1. Reset trạng thái ban đầu
+        hintOverlay.transform.DOKill(); // Dừng các tween cũ nếu có
+        hintOverlay.SetActive(true);
+        hintOverlay.transform.localScale = Vector3.zero;
+
+        // 2. Tween xuất hiện (Scale từ 0 lên 1)
+        hintOverlay.transform.DOScale(Vector3.one * 0.8f, 0.3f)
+            .SetEase(Ease.OutBack)
+            .OnComplete(() =>
+            {
+                // 3. Khi hiện xong, bắt đầu hiệu ứng phóng to thu nhỏ 10% liên tục
+                // Scale từ 1 lên 1.1 rồi quay lại (Yoyo)
+                hintOverlay.transform.DOScale(Vector3.one * 1f, 0.8f)
+                    .SetEase(Ease.InOutSine)
+                    .SetLoops(-1, LoopType.Yoyo); // -1 là lặp vô tận
+            });
+    }
+
+    public void ClearHint()
+    {
+        // Dừng hiệu ứng loop và thu nhỏ biến mất
+        if (hintOverlay == null) return;
+
+        hintOverlay.transform.DOKill(); 
+        hintOverlay.transform.DOScale(Vector3.zero, 0.2f)
+            .OnComplete(() => hintOverlay.SetActive(false));
     }
 }

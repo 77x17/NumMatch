@@ -17,6 +17,7 @@ public class BoardManager : MonoBehaviour
 
     [SerializeField] private TextMeshProUGUI addButtonNumberText; // Add button
     [SerializeField] private TextMeshProUGUI stageText;
+    [SerializeField] private TextMeshProUGUI pairsText;
     [SerializeField] private GameObject losePanel;
     [SerializeField] private GameObject winPanel;
     [SerializeField] private GameObject homePanel;
@@ -31,6 +32,7 @@ public class BoardManager : MonoBehaviour
     private List<CellView> cellViews = new List<CellView>();
 
     private int firstSelected = -1;
+    private int[] matchableWithSelected;
     private int secondSelected = -1;
 
     private const int START_ROWS = 3;
@@ -64,6 +66,27 @@ public class BoardManager : MonoBehaviour
     private int currentPinkGems = 0;
     private int currentOrangeGems = 0;
     private int currentPurpleGems = 0;
+
+    private float hintDelay = 15f;
+    private int[] hintIndex;
+    private float idleTimer = 0f;
+    private bool isGameActive = true;
+
+    void Awake()
+    {
+        matchableWithSelected = new int[8];
+        for (int i = 0; i < 8; ++i) matchableWithSelected[i] = -1;
+
+        hintIndex = new int[2];
+    }
+
+    void Update()
+    {
+        if (isGameActive && !isAnimating)
+        {
+            HandleIdleTimer();
+        }
+    }
 
     // Start is called before the first frame update
     void Start()
@@ -106,7 +129,17 @@ public class BoardManager : MonoBehaviour
         firstSelected = -1;
         secondSelected = -1;
 
+        idleTimer = 0f;
+        hintIndex[0] = -1;
+        hintIndex[1] = -1;
+
         GenerateNewStage();
+    }
+
+    private void UpdatePairsText()
+    {
+        int pairsLeft = CountMatchPairs(boardData);
+        pairsText.text = $"Pairs: {pairsLeft}";
     }
 
     private void SetupGridCellSize()
@@ -122,7 +155,6 @@ public class BoardManager : MonoBehaviour
 
         viewportRect.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, viewportWidth);
     }
-
 
     public void UpdateBoard()
     {
@@ -147,6 +179,8 @@ public class BoardManager : MonoBehaviour
         }
 
         UpdateScrollState(lastValue, boardData.Count);
+
+        UpdatePairsText();
     }
     public void UpdateScrollState(int lastValue, int boardSize)
     {
@@ -193,7 +227,7 @@ public class BoardManager : MonoBehaviour
         }
     }
 
-    private IEnumerator DisplayCellsSequentially(List<int> valuesToDisplay, bool[] gemStatus, int startIndex)
+    private IEnumerator DisplayCellsSequentially(List<int> valuesToDisplay, bool[] gemStatus, int startIndex, System.Action onComplete = null)
     {
         isAnimating = true;
         
@@ -236,6 +270,8 @@ public class BoardManager : MonoBehaviour
 
         isAnimating = false;
         UpdateBoard();
+
+        onComplete?.Invoke();
     }
 
     // Hàm hỗ trợ cập nhật dữ liệu để code gọn gàng hơn
@@ -314,19 +350,17 @@ public class BoardManager : MonoBehaviour
             }
         }
         while (true);
-
-        UpdateBoard();
     }
 
     private int CountMatchPairs(List<int> board)
     {
         int result = 0;
         bool[] visited = new bool[board.Count];
-        for (int i = 0; i < board.Count; ++i) if (!visited[i])
+        for (int i = 0; i < board.Count; ++i) if (!visited[i] && board[i] > 0)
         {
-            for (int j = i + 1; j < board.Count; ++j)
+            for (int j = i + 1; j < board.Count; ++j) if (!visited[j] && board[j] > 0)
             {
-                if (PreMatch(i, j, board) && CanMatch(i, j, board)) if (!visited[j])
+                if (PreMatch(i, j, board) && CanMatch(i, j, board))
                 {
                     visited[i] = true;
                     visited[j] = true;
@@ -532,8 +566,148 @@ public class BoardManager : MonoBehaviour
         return availableMask;
     }
 
+    private void GetMatchableWithSelected()
+    {
+        if (firstSelected == -1) return;
+
+        int count = 0;
+        int totalCells = boardData.Count;
+        int r = firstSelected / 9, c = firstSelected % 9;
+        
+        // Index
+        for (int index = firstSelected - 1; index >= 0; --index)
+        {
+            if (boardData[index] > 0)
+            {
+                matchableWithSelected[count++] = index;
+                break;
+            }
+        }
+
+        for (int index = firstSelected + 1; index < totalCells; ++index)
+        {
+            if (boardData[index] > 0)
+            {
+                matchableWithSelected[count++] = index;
+                break;
+            }
+        }
+
+        // Ngang
+        int anchor = r * 9;
+        for (int index = firstSelected - 1; index >= anchor; --index)
+        {
+            if (boardData[index] > 0) 
+            {
+                if (!IsAlreadyAdded(index, count)) matchableWithSelected[count++] = index;
+                break;
+            }
+        }
+        anchor = r * 9 + 8;
+        for (int index = firstSelected + 1; index <= anchor; ++index)
+        {
+            if (boardData[index] > 0) 
+            {
+                if (!IsAlreadyAdded(index, count)) matchableWithSelected[count++] = index;
+                break;
+            }
+        }
+
+        // Dọc
+        anchor = 0;
+        for (int index = firstSelected - 9; index >= anchor; index -= 9)
+        {
+            if (boardData[index] > 0) 
+            {
+                matchableWithSelected[count++] = index;
+                break;
+            }
+        }
+        anchor = totalCells - 1;
+        for (int index = firstSelected + 9; index <= anchor; index += 9)
+        {
+            if (boardData[index] > 0) 
+            {
+                matchableWithSelected[count++] = index;
+                break;
+            }
+        }
+        
+        // 4. TÌM THEO ĐƯỜNG CHÉO (Tùy chọn - Một số bản game có)
+        int[,] directions = { {-1, -1}, {-1, 1}, {1, -1}, {1, 1} };
+        for (int d = 0; d < 4; d++)
+        {
+            int currR = r;
+            int currC = c;
+            while (true)
+            {
+                currR += directions[d, 0];
+                currC += directions[d, 1];
+                
+                if (currR < 0 || currC < 0 || currC >= 9 || currR * 9 + currC >= totalCells) break;
+
+                int index = currR * 9 + currC;
+                if (boardData[index] > 0)
+                {
+                    matchableWithSelected[count++] = index;
+                    break;
+                }
+            }
+        }
+    }
+
+    private bool IsAlreadyAdded(int index, int currentCount)
+    {
+        for (int i = 0; i < currentCount; i++)
+        {
+            if (matchableWithSelected[i] == index) return true;
+        }
+        return false;
+    }
+
+    private void ResetMatchableWithSelected()
+    {
+        for (int i = 0; i < 8; ++i)
+        {
+            if (matchableWithSelected[i] == -1) continue;
+
+            cellViews[matchableWithSelected[i]].SetPreview(false);
+
+            matchableWithSelected[i] = -1;
+        }
+    }
+
+    private void ShowMatchableWithSelected()
+    {
+        GetMatchableWithSelected();
+
+        for (int i = 0; i < 8; ++i)
+        {
+            if (matchableWithSelected[i] == -1) continue;
+
+            if (!nearFirstSelected(matchableWithSelected[i])) {
+                cellViews[matchableWithSelected[i]].SetPreview(true);
+            }
+        }
+    }
+
+    private bool nearFirstSelected(int index)
+    {
+        if (firstSelected == -1) return true;
+
+        if (index == firstSelected - 1 || index == firstSelected + 1 || index == firstSelected - 9  || index == firstSelected + 9 || 
+            index == firstSelected - 8 || index == firstSelected + 8 || index == firstSelected - 10 || index == firstSelected + 10)
+        {
+            return true;
+        }
+        return false;
+    }
+
     private void HandleCellClicked(int index)
     {
+        idleTimer = 0f;
+        ClearHint();
+
         if (isAnimating) return; 
 
         audioSource.PlayOneShot(chooseNumberSound);
@@ -542,6 +716,9 @@ public class BoardManager : MonoBehaviour
         {
             Deselect(firstSelected);
             firstSelected = -1;
+
+            ResetMatchableWithSelected();
+
             return;
         }
 
@@ -549,6 +726,9 @@ public class BoardManager : MonoBehaviour
         {
             firstSelected = index;
             cellViews[index].SetHighlight(true);
+            
+            ShowMatchableWithSelected();
+
             return;
         }
 
@@ -562,7 +742,12 @@ public class BoardManager : MonoBehaviour
         else
         {
             Deselect(firstSelected);
-            firstSelected  = secondSelected;
+
+            firstSelected = secondSelected;
+
+            ResetMatchableWithSelected();
+            ShowMatchableWithSelected();
+
             secondSelected = -1;
         }
     }
@@ -778,6 +963,8 @@ public class BoardManager : MonoBehaviour
 
         firstSelected  = -1;
         secondSelected = -1;
+
+        ResetMatchableWithSelected();
     }
 
     private bool CheckLose()
@@ -799,6 +986,7 @@ public class BoardManager : MonoBehaviour
     private void ShowLoseScreen()
     {
         losePanel.SetActive(true);
+        isGameActive = false;
         // Time.timeScale = 0.0f;
     }
 
@@ -817,6 +1005,7 @@ public class BoardManager : MonoBehaviour
     private void ShowWinScreen()
     {
         winPanel.SetActive(true);
+        isGameActive = false;
         // Time.timeScale = 0.0f;
     }
 
@@ -1156,6 +1345,8 @@ public class BoardManager : MonoBehaviour
             // Không có clear line → chạy luôn như cũ
             PostClearProcess(a, b, false, false);
         }
+
+        UpdatePairsText();
     }
 
     private IEnumerator ProcessClearLinesAndContinue(int a, int b, bool clearLineA, bool clearLineB)
@@ -1299,8 +1490,61 @@ public class BoardManager : MonoBehaviour
         }
     }
 
+    private void FindMatchablePair()
+    {
+        for (int i = 0; i < boardData.Count; ++i) if (boardData[i] > 0)
+        {
+            for (int j = i + 1; j < boardData.Count; ++j) if (boardData[j] > 0) 
+            {
+                if (PreMatch(i, j) && CanMatch(i, j))
+                {
+                    hintIndex[0] = i;
+                    hintIndex[1] = j;
+                    return;
+                }
+            }
+        }
+
+        return;
+    }
+
+    private void ShowHint()
+    {
+        FindMatchablePair();
+        if (hintIndex[0] == -1 || hintIndex[1] == -1) return;
+
+        Debug.Log("[Show hint]");
+
+        cellViews[hintIndex[0]].SetHint();
+        cellViews[hintIndex[1]].SetHint();
+    }
+
+    private void ClearHint()
+    {
+        if (hintIndex[0] == -1 || hintIndex[1] == -1) return;
+
+        cellViews[hintIndex[0]].ClearHint();
+        cellViews[hintIndex[1]].ClearHint();
+
+        hintIndex[0] = -1;
+        hintIndex[1] = -1;
+    }
+
+     private void HandleIdleTimer()
+    {
+        idleTimer += Time.deltaTime;
+        if (idleTimer >= hintDelay)
+        {
+            ShowHint();
+            idleTimer = 0f;
+        }
+    }
+
     public void HandleAddMoreNumbers()
     {
+        idleTimer = 0f;
+        ClearHint();
+
         if (isAnimating) return;
 
         audioSource.PlayOneShot(pop2Sound);
@@ -1326,25 +1570,28 @@ public class BoardManager : MonoBehaviour
 
         bool[] gemStatus = GenerateGems(startIndex, remaining);
 
-        StartCoroutine(DisplayCellsSequentially(remaining, gemStatus, startIndex));
-
         --addButtonCounter;
         addButtonNumberText.text = addButtonCounter.ToString();
-
-        Debug.Log($"[AddMoreNumbers Trigger] - Total valid numbers: { remaining.Count * 2 }");
-
-        if (addButtonCounter == 0)
+        StartCoroutine(DisplayCellsSequentially(remaining, gemStatus, startIndex, () => 
         {
-            if (CheckLose())
+            // Khối lệnh này chỉ chạy SAU KHI Coroutine kết thúc
+            Debug.Log($"[AddMoreNumbers Trigger] - Total valid numbers: { remaining.Count * 2 }");
+            
+            if (addButtonCounter == 0)
             {
-                ShowLoseScreen();   
+                if (CheckLose())
+                {
+                    ShowLoseScreen();
+                }
             }
-        }
+        }));
     }
 
     public void HandleSettingButton()
     {
         if (isAnimating) return;
+
+        isGameActive = false;
 
         audioSource.PlayOneShot(pop2Sound);
 
@@ -1355,6 +1602,8 @@ public class BoardManager : MonoBehaviour
     public void HandleHomeButton()
     {
         if (isAnimating) return;
+
+        isGameActive = false;
         
         audioSource.PlayOneShot(pop2Sound);
 
@@ -1366,6 +1615,8 @@ public class BoardManager : MonoBehaviour
     {
         if (isAnimating) return;
         
+        isGameActive = true;
+
         audioSource.PlayOneShot(pop2Sound);
 
         // Time.timeScale = 1.0f;
@@ -1380,6 +1631,8 @@ public class BoardManager : MonoBehaviour
     public void HandleBackButton()
     {
         if (isAnimating) return;
+
+        isGameActive = true;
 
         audioSource.PlayOneShot(pop2Sound);
 
