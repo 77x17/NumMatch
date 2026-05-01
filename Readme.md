@@ -2,7 +2,9 @@
 
 A high-performance puzzle game developed in Unity C#. Players match pairs of numbers based on specific logic to clear the board and collect gems.
 
-![NumMatch Banner](https://via.placeholder.com/800x400?text=NumMatch+Gameplay+Banner)
+<p align="center">
+  <img src="Images/Img1.png" alt="NumMatch Banner">
+</p>
 
 ---
 
@@ -20,11 +22,23 @@ A high-performance puzzle game developed in Unity C#. Players match pairs of num
 *   **VFX:** Dynamic line drawing and row-clearing animations.
     *   *Logic:* `VFXManager.DrawMatchLine`
 
+<p align="center">
+  <img src="Images/Img2.png" alt="NumMatch Match">
+</p>
+
 ### 3. Advanced Mechanics
 *   **Audio System:** Managed via `AudioManager.cs` using enums: `ChooseNumber`, `PairClear`, `Pop`, `RowClear`, `GemCollect`, `Write`, `Wrong`.
 *   **Hint & Suggestion:** 
     *   **Smart Suggest:** Highlights neighbors when a cell is selected.
     *   **Auto-Hint:** Triggers after 10 seconds of inactivity to reduce player stress.
+
+<p align="center">
+  <img src="Images/Img4.png" alt="NumMatch Match">
+</p>
+
+<p align="center">
+  <img src="Images/Img3.png" alt="NumMatch Hint">
+</p>
 
 ---
 
