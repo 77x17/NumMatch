@@ -21,7 +21,7 @@ public class GameManager : MonoBehaviour
 
     public void StartGame()
     {
-        currentStage = Random.Range(0, 3);
+        currentStage = 0;
         GenerateNewStage();
     }
 
