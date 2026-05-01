@@ -181,8 +181,10 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
     public void PlayClearAnimation(float duration)
     {
         // numberText.DOKill();
+        transform.DOKill(); 
         if (numberText != null) {
-            numberText.DOFade(0f, duration).SetEase(Ease.InQuad);
+            numberText.DOKill();
+            numberText.DOFade(0f, duration).SetEase(Ease.InQuad).SetLink(numberText.gameObject);
         }
         // Tạo chuỗi animation cho Scale
         Sequence s = DOTween.Sequence();
@@ -193,6 +195,8 @@ public class CellView : MonoBehaviour, IPointerDownHandler {
         // Bật mạnh lại kích thước cũ thật nhanh (30%) 
         // Dùng Ease.OutBack để nó hơi nở quá 1.0 một chút rồi mới dừng lại, cực kỳ mượt!
         s.Append(transform.DOScale(Vector3.one, duration * 0.7f).SetEase(Ease.OutBack));
+
+        s.SetLink(gameObject);
     }
 
     // Cập nhật lại index và vị trí mới

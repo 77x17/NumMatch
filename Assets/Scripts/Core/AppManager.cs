@@ -12,12 +12,12 @@ public class AppManager : MonoBehaviour
 
         float targetRatio = 9f / 16f;
 
-        int finalH = (int)(screenH * 0.9f);
+        int finalH = (int)(screenH * 0.95f);
         int finalW = Mathf.RoundToInt(finalH * targetRatio);
 
         if (finalW > screenW)
         {
-            finalW = (int)(screenW * 0.9f);
+            finalW = (int)(screenW * 0.95f);
             finalH = Mathf.RoundToInt(finalW / targetRatio);
         }
 
