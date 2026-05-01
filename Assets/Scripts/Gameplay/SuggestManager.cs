@@ -140,6 +140,9 @@ public class SuggestManager : MonoBehaviour
     {
         if (firstSelected == -1) return true;
 
+        if (index == firstSelected + 1 && firstSelected % Constants.COLUMNS == 8) return false;
+        if (index == firstSelected - 1 && firstSelected % Constants.COLUMNS == 0) return false;
+
         if (index == firstSelected - 1 || index == firstSelected + 1 || index == firstSelected - 9  || index == firstSelected + 9 || 
             index == firstSelected - 8 || index == firstSelected + 8 || index == firstSelected - 10 || index == firstSelected + 10)
         {
